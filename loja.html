@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MK World Imports</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body id="store-body">
+
+    <header id="store-header">
+        <div class="container">
+            <div class="logo-container">
+                <img src="/logoloja.png" alt="Logo da Loja" id="store-logo-img">
+                <div>
+                    <h1 id="store-name-header">MK World Imports</h1>
+                    <p id="store-slogan-header">Eletrônicos e Acessórios</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="cart-button">
+                    <i class='bx bxs-cart'></i>
+                    <span id="cart-count">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section id="hero-banner" style="background-image: url('https://images.unsplash.com/photo-1550009158-94ae76552485?q=80&w=2574&auto=format&fit=crop');">
+            <div class="container hero-content">
+                <h2>Os melhores gadgets estão aqui</h2>
+                <p>Confira nossas novidades e promoções!</p>
+            </div>
+        </section>
+
+        <section id="catalog">
+            <div class="container">
+                <h2>Nosso Catálogo</h2>
+                <div class="catalog-controls">
+                    <input type="text" id="product-search-input" class="search-bar" placeholder="O que você procura?">
+                    <select id="category-filter">
+                        <option value="all">Todas as Categorias</option>
+                    </select>
+                    <div class="view-toggle-buttons">
+                        <button id="grid-view-btn" class="view-btn" title="Visualização em Grade"><i class='bx bxs-grid-alt'></i></button>
+                        <button id="list-view-btn" class="view-btn" title="Visualização em Lista"><i class='bx bx-list-ul'></i></button>
+                    </div>
+                </div>
+                <div id="products-list">
+                    <!-- Products will be injected here by JS -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="store-footer">
+        <div class="container">
+            <div id="social-links-container"></div>
+            <p>&copy; 2024 <span class="footer-store-name" id="footer-store-name">MK World Imports</span>. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+    
+    <!-- Cart Modal -->
+    <div id="cart-modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="close-modal-btn" id="close-cart-btn">&times;</button>
+            <h3>Meu Carrinho</h3>
+            <div id="cart-items-container">
+                <!-- Cart items will be injected here -->
+            </div>
+            <div class="cart-summary">
+                <p>Total: <span id="cart-total">R$ 0,00</span></p>
+                <button id="checkout-btn" disabled>Finalizar Pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Detail Modal -->
+    <div id="product-detail-modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="close-modal-btn" id="close-product-detail-btn">&times;</button>
+            <div id="product-detail-content">
+                <!-- Content will be injected by JS -->
+            </div>
+            <div id="related-products-container" class="related-products-container">
+                <h4>Você também pode gostar</h4>
+                <div id="related-products-list">
+                    <!-- Related products will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+     <div id="checkout-modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="close-modal-btn" id="close-checkout-btn">&times;</button>
+            <h3>Finalizar Pedido</h3>
+            <div id="checkout-order-summary">
+                <!-- Order summary injected here -->
+            </div>
+            <hr style="margin: 1rem 0;">
+            <p>Para finalizar, seu cadastro será criado ou atualizado. Preencha seus dados:</p>
+            <form id="checkout-form">
+                <div class="form-group">
+                    <label for="checkout-customer-name">Nome Completo</label>
+                    <input type="text" id="checkout-customer-name" required placeholder="Seu nome completo">
+                </div>
+                <div class="form-group">
+                    <label for="checkout-customer-phone">Telefone (WhatsApp)</label>
+                    <input type="tel" id="checkout-customer-phone" required placeholder="Ex: 5511987654321">
+                </div>
+                <div class="form-group">
+                    <label for="payment-method-select">Forma de Pagamento</label>
+                    <select id="payment-method-select">
+                        <option>PIX</option>
+                        <option>Dinheiro</option>
+                        <option>Cartão de Crédito</option>
+                        <option>Cartão de Débito</option>
+                        <option>Boleto</option>
+                        <option>Bitcoin (BTC)</option>
+                    </select>
+                </div>
+                <button type="submit" id="finalize-whatsapp-btn">Confirmar e Finalizar via WhatsApp</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-backdrop" class="hidden"></div>
+    <div id="toast" class="toast"></div>
+    
+    <script type="importmap">
+    {
+      "imports": {}
+    }
+    </script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
