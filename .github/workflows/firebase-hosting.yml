@@ -25,4 +25,4 @@ jobs:
         run: |
           echo "${GOOGLE_APPLICATION_CREDENTIALS}" > $HOME/firebase-key.json
           export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-key.json
-          firebase deploy --only hosting --project YOUR_FIREBASE_PROJECT_ID
+          firebase deploy --only hosting --project mk-world-loja
