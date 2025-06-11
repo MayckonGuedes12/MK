@@ -1,28 +1,17 @@
-// --- SCRIPT PARA PAINEL ADMINISTRATIVO E LOJA VIRTUAL ---
-const room = new WebsimSocket();
-
-// IIFE to encapsulate the entire script and avoid global scope pollution
 (() => {
     document.addEventListener('DOMContentLoaded', () => {
-        // Simple router to initialize the correct script for the current page
-        if (document.getElementById('admin-body')) {
-            initAdminPanel();
+        const adminBody = document.getElementById('admin-body');
+        const storeBody = document.getElementById('store-body');
+        
+        if (adminBody) {
+            initAdminPanel(adminBody);
         }
-        if (document.getElementById('store-body')) {
-            initStore();
+        if (storeBody) {
+            initStore(storeBody);
         }
     });
 
-    // =================================================================
-    // DATA SOURCE
-    // =================================================================
-    // The old localStorage-based DB object has been removed.
-    // The application now relies solely on WebsimSocket for persistent data.
-    // The client-side shopping cart will continue to use localStorage.
-
-    // =================================================================
-    // UTILITY FUNCTIONS
-    // =================================================================
+    // Utility Functions
     const Utils = {
         showToast: (message, type = 'success') => {
             const toast = document.getElementById('toast');
@@ -42,31 +31,77 @@ const room = new WebsimSocket();
         formatCurrency: (value) => {
             if (typeof value !== 'number') value = 0;
             return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        },
+        cleanPhoneNumber: (phone) => {
+            return phone.replace(/\D/g, '');
         }
     };
 
-    // =================================================================
-    // ADMIN PANEL LOGIC (`index.html`)
-    // =================================================================
-    function initAdminPanel() {
-        // --- Websim Collections ---
-        const productsCollection = room.collection('product_v3');
-        const customersCollection = room.collection('customer_v1');
-        const settingsCollection = room.collection('visualSetting_v1');
-        const cashEventsCollection = room.collection('cashEvent_v1');
-        const salesCollection = room.collection('sale_v1');
+    // Shared Visuals Logic
+    const applyGlobalSettings = (settings, bodyElement) => {
+        bodyElement.classList.remove('theme-light', 'theme-dark');
+        bodyElement.classList.add(`theme-${settings.theme || 'dark'}`);
+        const font = settings.fontFamily || 'Poppins';
+        const fontId = `dynamic-font-link-${bodyElement.id}`;
+        const existingFontLink = document.getElementById(fontId);
+        if (existingFontLink) existingFontLink.remove();
+        const fontLink = document.createElement('link');
+        fontLink.id = fontId;
+        fontLink.rel = 'stylesheet';
+        fontLink.href = `https://fonts.googleapis.com/css2?family=${font.replace(' ', '+')}:wght@300;400;500;600;700&display=swap`;
+        document.head.appendChild(fontLink);
+        bodyElement.style.setProperty('--font-family', `'${font}', sans-serif`);
+    };
 
-        const uploadFile = async (file) => {
-            try {
-                return await websim.upload(file);
-            } catch (error) {
-                console.error('Error uploading file:', error);
-                Utils.showToast('Erro no upload do arquivo.', 'error');
-                throw error;
-            }
-        };
+    // LocalStorage-based Data Source
+    const LocalStorageDB = {
+        getCollection: (name) => {
+            return {
+                subscribe: (callback) => {
+                    const data = JSON.parse(localStorage.getItem(name) || '[]');
+                    callback(data);
+                    window.addEventListener('storageUpdate', (e) => {
+                        if (e.detail.collection === name) {
+                            callback(JSON.parse(localStorage.getItem(name) || '[]'));
+                        }
+                    });
+                },
+                create: async (data) => {
+                    const collection = JSON.parse(localStorage.getItem(name) || '[]');
+                    const id = Date.now().toString();
+                    const newItem = { ...data, id, created_at: new Date().toISOString() };
+                    collection.push(newItem);
+                    localStorage.setItem(name, JSON.stringify(collection));
+                    window.dispatchEvent(new CustomEvent('storageUpdate', { detail: { collection: name } }));
+                    return newItem;
+                },
+                update: async (id, data) => {
+                    const collection = JSON.parse(localStorage.getItem(name) || '[]');
+                    const index = collection.findIndex(item => item.id == id);
+                    if (index !== -1) {
+                        collection[index] = { ...collection[index], ...data };
+                        localStorage.setItem(name, JSON.stringify(collection));
+                        window.dispatchEvent(new CustomEvent('storageUpdate', { detail: { collection: name } }));
+                    }
+                },
+                delete: async (id) => {
+                    const collection = JSON.parse(localStorage.getItem(name) || '[]');
+                    const filtered = collection.filter(item => item.id != id);
+                    localStorage.setItem(name, JSON.stringify(filtered));
+                    window.dispatchEvent(new CustomEvent('storageUpdate', { detail: { collection: name } }));
+                }
+            };
+        }
+    };
 
-        // --- Local State ---
+    // Admin Panel Logic
+    function initAdminPanel(adminBody) {
+        const productsCollection = LocalStorageDB.getCollection('product_v3');
+        const customersCollection = LocalStorageDB.getCollection('customer_v1');
+        const settingsCollection = LocalStorageDB.getCollection('visualSetting_v2');
+        const cashEventsCollection = LocalStorageDB.getCollection('cashEvent_v1');
+        const salesCollection = LocalStorageDB.getCollection('sale_v1');
+
         let products = [];
         let customers = [];
         let visualSettings = null;
@@ -76,7 +111,7 @@ const room = new WebsimSocket();
         let productChartInstance, categoryChartInstance;
         let currentOrderFilter = 'all';
 
-        // --- Authentication & Navigation ---
+        // Authentication & Navigation
         const handleLogin = (e) => {
             e.preventDefault();
             if (document.getElementById('username').value === 'admin' && document.getElementById('password').value === 'admin') {
@@ -118,7 +153,7 @@ const room = new WebsimSocket();
             if (link.dataset.target === 'pos-section') updatePosAvailability();
         };
 
-        // --- Data Subscriptions & State Management ---
+        // Data Subscriptions
         const bindAdminSubscriptions = () => {
             productsCollection.subscribe(data => {
                 products = data;
@@ -136,26 +171,35 @@ const room = new WebsimSocket();
                 sales = data;
                 updateDashboard();
                 renderOnlineOrders();
-                renderCustomers(); // Re-render customers to update total spent
+                renderCustomers();
             });
             settingsCollection.subscribe(async (settingsList) => {
                 if (settingsList.length > 0) {
                     visualSettings = settingsList[0];
                 } else {
-                    // Create default settings if none exist
                     visualSettings = await settingsCollection.create({
-                        storeName: 'MK World Imports', storeSlogan: 'Eletrônicos e Acessórios', logoUrl: '/logoloja.png', backgroundUrl: 'https://images.unsplash.com/photo-1550009158-94ae76552485?q=80&w=2574&auto=format&fit=crop', whatsappNumber: '5511999999999', instagramUser: 'websim', colorPrimary: '#3B82F6', colorBackground: '#111827', colorText: '#F9FAFB', colorCard: '#1F2937', adminLogoUrl: '/logoloja.png'
+                        theme: 'dark',
+                        fontFamily: 'Poppins',
+                        storeName: 'MK World Imports',
+                        storeSlogan: 'Eletrônicos e Acessórios',
+                        logoUrl: '/logoloja.png',
+                        backgroundUrl: 'https://images.unsplash.com/photo-1550009158-94ae76552485?q=80&w=2574&auto=format&fit=crop',
+                        whatsappNumber: '5511999999999',
+                        instagramUser: 'mkimports',
+                        storeColorPrimary: '#3B82F6',
+                        storeColorBackground: '#111827',
+                        storeColorText: '#F9FAFB',
+                        storeColorCard: '#1F2937',
+                        adminLogoUrl: '/logoloja.png',
+                        adminColorPrimary: '#3B82F6',
+                        adminColorBackground: '#111827',
+                        adminColorSurface: '#1F2937',
+                        adminColorText: '#F9FAFB'
                     });
                 }
+                applyGlobalSettings(visualSettings, adminBody);
+                applyAdminPanelSettings(visualSettings);
                 loadDesignerForm();
-                // Update admin panel logos
-                if (visualSettings && visualSettings.adminLogoUrl) {
-                    const adminLogoUrl = visualSettings.adminLogoUrl;
-                    const loginLogo = document.getElementById('login-logo-img');
-                    const sidebarLogo = document.getElementById('sidebar-logo');
-                    if (loginLogo) loginLogo.src = adminLogoUrl;
-                    if (sidebarLogo) sidebarLogo.src = adminLogoUrl;
-                }
             });
             cashEventsCollection.subscribe(events => {
                 recalculateCashState(events);
@@ -165,19 +209,17 @@ const room = new WebsimSocket();
             });
         };
 
-        // --- Dashboard & Charts ---
+        // Dashboard & Charts
         const updateDashboard = () => {
-            if(!document.getElementById('dashboard-sales')) return;
+            if (!document.getElementById('dashboard-sales')) return;
             document.getElementById('dashboard-sales').textContent = Utils.formatCurrency(sales.reduce((sum, s) => sum + s.total, 0));
             document.getElementById('dashboard-customers').textContent = customers.length;
             document.getElementById('dashboard-products').textContent = products.reduce((sum, p) => sum + p.stock, 0);
             document.getElementById('dashboard-orders').textContent = sales.filter(s => s.type === 'online' && s.status === 'pending').length;
-            
             const totalInvestment = products.reduce((sum, p) => sum + (p.investmentValue || 0) * p.stock, 0);
             const revenuePotential = products.reduce((sum, p) => sum + (p.price || 0) * p.stock, 0);
             document.getElementById('dashboard-investment').textContent = Utils.formatCurrency(totalInvestment);
             document.getElementById('dashboard-revenue-potential').textContent = Utils.formatCurrency(revenuePotential);
-
             renderDashboardRecentSales();
             renderCharts();
         };
@@ -185,7 +227,7 @@ const room = new WebsimSocket();
         const renderDashboardRecentSales = () => {
             const tbody = document.querySelector('#recent-sales-table tbody');
             if (!tbody) return;
-            const recentSales = [...sales].reverse().slice(0, 5); // Get last 5
+            const recentSales = [...sales].reverse().slice(0, 5);
             tbody.innerHTML = recentSales.map(sale => `
                 <tr>
                     <td>${sale.customerName}</td>
@@ -202,11 +244,8 @@ const room = new WebsimSocket();
                 const salesCtx = document.getElementById('salesChart')?.getContext('2d');
                 const categoryCtx = document.getElementById('categoryChart')?.getContext('2d');
                 if (!salesCtx || !categoryCtx) return;
-
                 if (productChartInstance) productChartInstance.destroy();
                 if (categoryChartInstance) categoryChartInstance.destroy();
-                
-                // Sales by Category Chart
                 const salesByCat = sales.reduce((acc, sale) => {
                     sale.items.forEach(item => {
                         const category = item.category || 'Sem Categoria';
@@ -214,7 +253,7 @@ const room = new WebsimSocket();
                     });
                     return acc;
                 }, {});
-
+                const textColor = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim();
                 categoryChartInstance = new Chart(categoryCtx, {
                     type: 'doughnut',
                     data: {
@@ -222,33 +261,29 @@ const room = new WebsimSocket();
                         datasets: [{
                             label: 'Vendas',
                             data: Object.values(salesByCat),
-                            backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#6366F1', '#8B5CF6' ],
-                            borderColor: getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim() || '#1F2937',
+                            backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#6366F1', '#8B5CF6'],
+                            borderColor: getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim(),
                             borderWidth: 2
                         }]
                     },
-                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: 'white' } } } }
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: textColor } } } }
                 });
-                
-                // Sales by Day Chart
                 const salesByDay = sales.reduce((acc, sale) => {
                     const date = new Date(sale.created_at).toLocaleDateString('pt-BR');
                     acc[date] = (acc[date] || 0) + sale.total;
                     return acc;
                 }, {});
-
                 const sortedDates = Object.keys(salesByDay).sort((a, b) => new Date(a.split('/').reverse().join('-')) - new Date(b.split('/').reverse().join('-')));
                 const sortedSales = sortedDates.map(date => salesByDay[date]);
-
                 productChartInstance = new Chart(salesCtx, {
-                     type: 'line',
+                    type: 'line',
                     data: {
                         labels: sortedDates,
                         datasets: [{
                             label: 'Vendas por Dia',
                             data: sortedSales,
-                            borderColor: 'rgba(59, 130, 246, 1)',
-                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            borderColor: getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(),
+                            backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() + '33',
                             fill: true,
                             tension: 0.4
                         }]
@@ -257,22 +292,20 @@ const room = new WebsimSocket();
                         responsive: true,
                         maintainAspectRatio: false,
                         scales: {
-                            y: { beginAtZero: true, ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)'}},
-                            x: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)'}}
+                            y: { beginAtZero: true, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                            x: { ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } }
                         },
-                         plugins: { legend: { display: false } }
+                        plugins: { legend: { display: false } }
                     }
                 });
-
             }).catch(e => console.error("Chart.js loading failed:", e));
         };
 
-        // --- Products ---
+        // Products
         const renderProducts = () => {
             const tbody = document.querySelector('#products-table tbody');
             const searchTerm = document.getElementById('product-search').value.toLowerCase();
             const filteredProducts = products.filter(p => (p.name || '').toLowerCase().includes(searchTerm));
-
             tbody.innerHTML = [...filteredProducts].reverse().map(p => `
                 <tr>
                     <td><img src="${(p.images && p.images[0]) || '/placeholder.png'}" alt="${p.name}" class="product-table-img"></td>
@@ -295,10 +328,9 @@ const room = new WebsimSocket();
             const form = document.getElementById('product-form');
             form.reset();
             document.getElementById('product-id').value = '';
-            document.getElementById('product-images').value = ''; // Clear file input
+            document.getElementById('product-images').value = '';
             const previewsContainer = document.getElementById('product-image-previews');
             previewsContainer.innerHTML = '';
-
             if (id) {
                 const product = products.find(p => p.id == id);
                 document.getElementById('product-modal-title').textContent = 'Editar Produto';
@@ -310,81 +342,48 @@ const room = new WebsimSocket();
                 document.getElementById('product-stock').value = product.stock;
                 document.getElementById('product-category').value = product.category;
                 document.getElementById('product-video').value = product.videoUrl || '';
-                
                 if (product.images && product.images.length > 0) {
                     product.images.forEach(imgUrl => {
                         const previewContainer = document.createElement('div');
                         previewContainer.className = 'preview-image-container';
-                        
                         const img = document.createElement('img');
                         img.src = imgUrl;
                         img.className = 'preview-image';
-
                         const removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
                         removeBtn.className = 'remove-preview-btn';
-                        removeBtn.innerHTML = '&times;';
-                        removeBtn.onclick = () => {
-                            previewContainer.remove(); // Simple removal from DOM
-                        };
-
+                        removeBtn.innerHTML = '×';
+                        removeBtn.onclick = () => previewContainer.remove();
                         previewContainer.appendChild(img);
                         previewContainer.appendChild(removeBtn);
                         previewsContainer.appendChild(previewContainer);
                     });
                 }
-
             } else {
                 document.getElementById('product-modal-title').textContent = 'Adicionar Produto';
             }
             Utils.openModal('product-modal');
         };
-        
+
         const saveProduct = async (e) => {
             e.preventDefault();
             const id = document.getElementById('product-id').value;
             const previewElements = document.querySelectorAll('#product-image-previews .preview-image-container');
-            
-            const existingImageUrls = [];
-            const newFilesToUpload = [];
-
-            // Separate already uploaded images from new files by checking for `fileData`
-            previewElements.forEach(container => {
-                if (container.fileData) {
-                    // This is a new file that needs to be uploaded.
-                    newFilesToUpload.push(container.fileData);
-                } else {
-                    // This is an existing image, just keep its URL.
-                    const img = container.querySelector('img');
-                    if (img && img.src && !img.src.startsWith('data:')) {
-                        existingImageUrls.push(img.src);
-                    }
-                }
-            });
-
+            const imageUrls = Array.from(previewElements).map(container => {
+                const img = container.querySelector('img');
+                return img && img.src ? img.src : null;
+            }).filter(url => url);
+            const productData = {
+                name: document.getElementById('product-name').value,
+                desc: document.getElementById('product-desc').value,
+                price: parseFloat(document.getElementById('product-price').value),
+                investmentValue: parseFloat(document.getElementById('product-investment-price').value) || 0,
+                stock: parseInt(document.getElementById('product-stock').value, 10),
+                category: document.getElementById('product-category').value,
+                images: imageUrls,
+                videoUrl: document.getElementById('product-video').value
+            };
             try {
-                // Upload new files sequentially to be safer and provide feedback
-                const newImageUrls = [];
-                if (newFilesToUpload.length > 0) {
-                    Utils.showToast('Iniciando envio de imagens...', 'info');
-                    for (let i = 0; i < newFilesToUpload.length; i++) {
-                        const file = newFilesToUpload[i];
-                        Utils.showToast(`Enviando imagem ${i + 1} de ${newFilesToUpload.length}...`, 'info');
-                        const url = await uploadFile(file);
-                        newImageUrls.push(url);
-                    }
-                    Utils.showToast('Imagens enviadas. Salvando produto...', 'info');
-                } else {
-                    Utils.showToast('Salvando produto...', 'info');
-                }
-
-                // Combine the old URLs with the new ones
-                const allImages = [...existingImageUrls, ...newImageUrls];
-
-                const productData = {
-                    name: document.getElementById('product-name').value, desc: document.getElementById('product-desc').value, price: parseFloat(document.getElementById('product-price').value), investmentValue: parseFloat(document.getElementById('product-investment-price').value) || 0, stock: parseInt(document.getElementById('product-stock').value, 10), category: document.getElementById('product-category').value, images: allImages, videoUrl: document.getElementById('product-video').value,
-                };
-
                 if (id) {
                     await productsCollection.update(id, productData);
                 } else {
@@ -394,81 +393,64 @@ const room = new WebsimSocket();
                 Utils.showToast('Produto salvo com sucesso!');
             } catch (error) {
                 console.error("Product save failed:", error);
-                Utils.showToast('Falha ao salvar o produto.', 'error');
+                Utils.showToast('Erro ao salvar o produto.', 'error');
             }
         };
 
         const deleteProduct = async (id) => {
             if (confirm('Tem certeza que deseja excluir este produto?')) {
                 await productsCollection.delete(id);
-                Utils.showToast('Produto excluído!');
+                Utils.showToast('Produto excluído com sucesso!');
             }
         };
-        
+
         const handleImageSelection = (e) => {
             const files = e.target.files;
             const previewsContainer = document.getElementById('product-image-previews');
-    
             if (!files) return;
-
             for (const file of files) {
                 if (!file.type.startsWith('image/')) continue;
-    
-                // Create container and attach file data immediately to prevent race conditions
                 const previewContainer = document.createElement('div');
                 previewContainer.className = 'preview-image-container';
-                previewContainer.fileData = file; // Attach file data synchronously
-    
                 const img = document.createElement('img');
                 img.className = 'preview-image';
-    
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.className = 'remove-preview-btn';
-                removeBtn.innerHTML = '&times;';
-                removeBtn.onclick = () => {
-                    previewContainer.remove();
-                };
-    
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = () => previewContainer.remove();
                 previewContainer.appendChild(img);
                 previewContainer.appendChild(removeBtn);
                 previewsContainer.appendChild(previewContainer);
-
-                // Now read the file for preview
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    img.src = event.target.result; // Set preview image src asynchronously
+                    img.src = event.target.result;
                 };
                 reader.readAsDataURL(file);
             }
-            // Clear the file input value. This allows the user to select the same file again
-            // if they remove it from the previews and want to re-add it.
             e.target.value = null;
         };
 
-        // --- Online Orders ---
+        // Online Orders
         const renderOnlineOrders = () => {
             const container = document.getElementById('orders-list');
             if (!container) return;
-
-            const onlineOrders = [...sales].filter(s => {
+            const onlineOrders = sales.filter(s => {
                 if (s.type !== 'online') return false;
                 if (currentOrderFilter === 'all') return true;
                 return s.status === currentOrderFilter;
             }).reverse();
-
             if (onlineOrders.length === 0) {
                 container.innerHTML = '<p style="text-align: center; padding: 2rem;">Nenhum pedido online encontrado para este filtro.</p>';
                 return;
             }
-
             container.innerHTML = onlineOrders.map(order => `
                 <div class="order-card" id="order-${order.id}">
                     <div class="order-header">
                         <h4>Pedido de ${order.customerName}</h4>
                         <div class="order-meta">
                             <span>${new Date(order.created_at).toLocaleString('pt-BR')}</span>
-                            <span class="order-status ${order.status || 'pending'}">${order.status || 'pending'}</span>
+                            <span class="order-status ${order.status || 'pending'}">${order.status || 'Pendente'}</span>
                         </div>
                     </div>
                     <div class="order-body">
@@ -483,71 +465,55 @@ const room = new WebsimSocket();
                             <span>(${order.paymentMethod})</span>
                         </div>
                         <div class="order-actions">
-                             ${order.status !== 'completed' ? `<button class="confirm-order-btn" data-id="${order.id}"><i class='bx bx-check-circle'></i> Confirmar</button>` : `<span class="text-success" style="display: flex; align-items: center; gap: 6px;"><i class='bx bx-check-circle'></i> Concluído</span>`}
+                            ${order.status !== 'completed' ? `<button class="confirm-order-btn" data-id="${order.id}"><i class='bx bx-check-circle'></i> Confirmar</button>` : `<span class="text-success" style="display: flex; align-items: center; gap: 6px;"><i class='bx bx-check-circle'></i> Concluído</span>`}
                             <button class="delete-order-btn" data-id="${order.id}"><i class='bx bxs-trash'></i></button>
                         </div>
                     </div>
                 </div>
             `).join('');
-
             document.querySelectorAll('.confirm-order-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
-                    btn.disabled = true; // Prevent double clicks
-                    const orderId = btn.dataset.id;
-                    await salesCollection.update(orderId, { status: 'completed' });
+                    btn.disabled = true;
+                    await salesCollection.update(btn.dataset.id, { status: 'completed' });
                     Utils.showToast('Pedido confirmado!');
                 });
             });
-
             document.querySelectorAll('.delete-order-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
-                    const orderId = btn.dataset.id;
-                    const orderToDelete = sales.find(s => s.id === orderId);
-
-                    if (!orderToDelete) return Utils.showToast('Pedido não encontrado.', 'error');
-
-                    let confirmMessage = 'Tem certeza que deseja excluir este pedido? Esta ação não pode ser desfeita.';
-                    
-                    if (orderToDelete.status === 'pending') {
-                         confirmMessage = 'Tem certeza que deseja excluir este pedido? O estoque dos itens será restaurado.';
-                    }
-
-                    if (confirm(confirmMessage)) {
+                    if (confirm('Tem certeza que deseja cancelar este pedido? O estoque dos itens será restaurado.')) {
                         btn.disabled = true;
-                        
                         try {
-                            if (orderToDelete.status === 'pending') {
-                                Utils.showToast('Restaurando estoque...', 'info');
-                                const stockUpdatePromises = orderToDelete.items.map(item => {
+                            const order = sales.find(s => s.id === btn.dataset.id);
+                            if (order?.items?.length) {
+                                const stockUpdates = order.items.map(item => {
                                     const product = products.find(p => p.id === item.id);
                                     if (product) {
-                                        const newStock = (product.stock || 0) + item.qty;
-                                        return productsCollection.update(product.id, { stock: newStock });
+                                        return productsCollection.update(product.id, { stock: product.stock + item.qty });
                                     }
                                     return Promise.resolve();
                                 });
-                                await Promise.all(stockUpdatePromises);
+                                await Promise.all(stockUpdates);
                             }
-
-                            await salesCollection.delete(orderId);
-                            Utils.showToast('Pedido excluído com sucesso.');
+                            await salesCollection.delete(btn.dataset.id);
+                            Utils.showToast('Pedido cancelado com sucesso!');
                         } catch (error) {
-                             console.error('Falha ao excluir o pedido:', error);
-                             Utils.showToast('Erro ao excluir o pedido.', 'error');
-                             btn.disabled = false;
+                            console.error('Erro ao excluir pedido:', error);
+                            Utils.showToast('Erro ao excluir pedido.', 'error');
+                            btn.disabled = false;
                         }
                     }
                 });
             });
         };
 
-        // --- Customers ---
+        // Customers
         const renderCustomers = () => {
-            const filteredCustomers = customers.filter(c => 
-                (c.name || '').toLowerCase().includes(document.getElementById('customer-search').value.toLowerCase()) ||
-                (c.cpf || '').includes(document.getElementById('customer-search').value)
-            );
             const tbody = document.querySelector('#customers-table tbody');
+            const searchTerm = document.getElementById('customer-search').value.toLowerCase();
+            const filteredCustomers = customers.filter(c => 
+                (c.name || '').toLowerCase().includes(searchTerm) || 
+                (c.cpf || '').includes(searchTerm)
+            );
             tbody.innerHTML = filteredCustomers.map(c => {
                 const totalSpent = sales.filter(s => s.customerId === c.id).reduce((sum, s) => sum + s.total, 0);
                 return `
@@ -586,11 +552,17 @@ const room = new WebsimSocket();
             }
             Utils.openModal('customer-modal');
         };
-        
+
         const saveCustomer = async (e) => {
-             e.preventDefault();
+            e.preventDefault();
             const id = document.getElementById('customer-id').value;
-            const customerData = { name: document.getElementById('customer-name').value, cpf: document.getElementById('customer-cpf').value, email: document.getElementById('customer-email').value, phone: document.getElementById('customer-phone').value, address: document.getElementById('customer-address').value };
+            const customerData = {
+                name: document.getElementById('customer-name').value,
+                cpf: document.getElementById('customer-cpf').value,
+                email: document.getElementById('customer-email').value,
+                phone: document.getElementById('customer-phone').value,
+                address: document.getElementById('customer-address').value
+            };
             if (id) {
                 await customersCollection.update(id, customerData);
             } else {
@@ -599,20 +571,21 @@ const room = new WebsimSocket();
             Utils.closeModal('customer-modal');
             Utils.showToast('Cliente salvo com sucesso!');
         };
+
         const deleteCustomer = async (id) => {
             if (confirm('Tem certeza que deseja excluir este cliente?')) {
                 await customersCollection.delete(id);
-                Utils.showToast('Cliente excluído!');
+                Utils.showToast('Cliente excluído com sucesso!');
             }
         };
 
-        // --- Point of Sale (POS) ---
+        // Point of Sale
         const renderPosProducts = () => {
             const searchTerm = document.getElementById('pos-product-search').value.toLowerCase();
             const grid = document.getElementById('pos-product-list');
-            grid.innerHTML = products
-                .filter(p => p.name.toLowerCase().includes(searchTerm))
-                .map(p => `
+            grid.innerHTML = products.filter(p => 
+                p.name.toLowerCase().includes(searchTerm)
+            ).map(p => `
                 <div class="pos-product-card ${p.stock <= 0 ? 'out-of-stock' : ''}" data-id="${p.id}">
                     <img src="${(p.images && p.images[0]) || '/placeholder.png'}" alt="${p.name}" width="80" height="80" loading="lazy" decoding="async">
                     <h5>${p.name}</h5>
@@ -620,26 +593,28 @@ const room = new WebsimSocket();
                     ${p.stock <= 0 ? '<small>Esgotado</small>' : `<small>Estoque: ${p.stock}</small>`}
                 </div>
             `).join('');
-            document.querySelectorAll('.pos-product-card').forEach(card => card.addEventListener('click', () => addToPosCart(card.dataset.id)));
+            document.querySelectorAll('.pos-product-card').forEach(card => {
+                card.addEventListener('click', () => addToPosCart(card.dataset.id));
+            });
         };
 
         const updatePosCustomerSelect = () => {
             const select = document.getElementById('pos-customer-select-input');
-            select.innerHTML = `<option value="consumidor-final">Consumidor Final</option>` +
+            select.innerHTML = '<option value="consumidor-final">Consumidor Final</option>' +
                 customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         };
-        
+
         const addToPosCart = (id) => {
             const product = products.find(p => p.id == id);
-            if(product.stock <= 0) {
+            if (!product || product.stock <= 0) {
                 return Utils.showToast('Produto esgotado!', 'error');
             }
-            const existingItem = posCart.find(item => item.id == id);
+            const existingItem = posCart.find(item => item.id === id);
             if (existingItem) {
-                if(existingItem.qty < product.stock) {
-                   existingItem.qty++;
+                if (existingItem.qty < product.stock) {
+                    existingItem.qty++;
                 } else {
-                   return Utils.showToast('Quantidade máxima em estoque atingida.', 'error');
+                    return Utils.showToast('Quantidade máxima em estoque atingida!', 'error');
                 }
             } else {
                 posCart.push({ ...product, qty: 1 });
@@ -649,90 +624,120 @@ const room = new WebsimSocket();
 
         const updatePosCart = () => {
             const itemsList = document.getElementById('pos-cart-items');
-            const totalAmountEl = document.getElementById('pos-total-amount');
+            const totalAmountElement = document.getElementById('pos-total-amount');
             let total = 0;
             itemsList.innerHTML = posCart.map(item => {
                 total += item.price * item.qty;
                 return `
-                    <li>
-                        <span>${item.qty}x ${item.name}</span>
-                        <span>${Utils.formatCurrency(item.price * item.qty)}</span>
-                        <button class="remove-pos-item-btn" data-id="${item.id}" title="Remover item">&times;</button>
+                    <li class="cart-item">
+                        <span class="cart-item-name">${item.qty}x ${item.name}</span>
+                        <span class="cart-item-price">${Utils.formatCurrency(item.price * item.qty)}</span>
+                        <button type="button" class="remove-pos-item-btn" data-id="${item.id}" title="Remove Item">×</button>
                     </li>
                 `;
             }).join('');
-            totalAmountEl.textContent = Utils.formatCurrency(total);
-            document.querySelectorAll('.remove-pos-item-btn').forEach(btn => btn.addEventListener('click', () => {
-                posCart = posCart.filter(item => item.id != btn.dataset.id);
-                updatePosCart();
-            }));
+            totalAmountElement.textContent = Utils.formatCurrency(total);
+            document.querySelectorAll('.remove-pos-item-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    posCart = posCart.filter(item => item.id !== btn.dataset.id);
+                    updatePosCart();
+                });
+            });
         };
 
         const registerPosSale = async () => {
             if (!cashState.isOpen) return Utils.showToast('O caixa está fechado.', 'error');
             if (posCart.length === 0) return Utils.showToast('O carrinho está vazio.', 'error');
-
             const total = posCart.reduce((sum, item) => sum + item.price * item.qty, 0);
-            
             for (const item of posCart) {
                 const product = products.find(p => p.id === item.id);
-                if (product.stock < item.qty) return Utils.showToast(`Estoque insuficiente para ${item.name}.`, 'error');
+                if (product.stock < item.qty) {
+                    return Utils.showToast(`Estoque insuficiente para ${item.name}.`, 'error');
+                }
             }
-
             Utils.showToast('Registrando venda...', 'info');
             const customerSelect = document.getElementById('pos-customer-select-input');
-            const saleRecord = {
-                items: posCart, total: total, paymentMethod: document.getElementById('pos-payment-method').value, customerName: customerSelect.options[customerSelect.selectedIndex].text, customerId: customerSelect.value, type: 'pos', status: 'completed'
+            const saleData = {
+                items: posCart,
+                total,
+                paymentMethod: document.getElementById('pos-payment-method').value,
+                customerName: customerSelect.options[customerSelect.selectedIndex].textContent,
+                customerId: customerSelect.value,
+                type: 'pos',
+                status: 'completed'
             };
-            const createdSale = await salesCollection.create(saleRecord);
-
+            const createdSale = await salesCollection.create(saleData);
             for (const item of posCart) {
                 const product = products.find(p => p.id === item.id);
-                await productsCollection.update(product.id, { stock: product.stock - item.qty });
+                await productsCollection.update(item.id, { stock: product.stock - item.qty });
             }
-            
             await cashEventsCollection.create({
-                entryType: 'entrada',
-                desc: `Venda PDV - Cliente: ${saleRecord.customerName}`,
+                entryType: 'entry',
+                description: `Venda PDV - Cliente: ${saleData.customerName}`,
                 amount: total,
                 saleId: createdSale.id
             });
-            
             posCart = [];
             updatePosCart();
             Utils.showToast('Venda registrada com sucesso!');
         };
-        
-        // --- Cash Control ---
+
+        // Cash Control
         const recalculateCashState = (events) => {
+            if (!Array.isArray(events)) {
+                console.warn('Eventos de caixa inválidos:', events);
+                cashState = { isOpen: false, balance: 0, history: [] };
+                return;
+            }
             const sortedEvents = [...events].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
             let balance = 0;
             let isOpen = false;
             const history = [];
-
             for (const event of sortedEvents) {
-                const historyItem = { 
-                    date: event.created_at, 
-                    desc: event.desc, 
-                    type: event.entryType, 
-                    amount: event.amount,
+                if (!event || !event.entryType) {
+                    console.warn('Evento de caixa inválido:', event);
+                    continue;
+                }
+                const historyEntry = { 
+                    ...event,
+                    date: new Date(event.created_at),
+                    description: event.description || 'Sem descrição',
+                    type: event.entryType,
+                    amount: Number(event.amount) || 0,
                     id: event.id,
                     saleId: event.saleId,
-                    isCancelled: event.isCancelled
+                    isCancelled: !!event.isCancelled
                 };
-                switch(event.entryType) {
-                    case 'info': isOpen = true; balance = event.amount; break;
-                    case 'entrada': if(isOpen && !event.isCancelled) balance += event.amount; break;
-                    case 'saida': if(isOpen) balance -= event.amount; break;
-                    case 'close': isOpen = false; break;
+                switch (event.entryType) {
+                    case 'open':
+                        isOpen = true;
+                        balance = Number(event.amount) || 0;
+                        break;
+                    case 'entry':
+                        if (isOpen && !event.isCancelled) balance += Number(event.amount) || 0;
+                        break;
+                    case 'exit':
+                        if (isOpen && !event.isCancelled) balance -= Number(event.amount) || 0;
+                        break;
+                    case 'close':
+                        isOpen = false;
+                        break;
+                    default:
+                        console.warn('Tipo de evento desconhecido:', event.entryType);
                 }
-                history.push(historyItem);
+                history.push(historyEntry);
             }
             cashState = { isOpen, balance, history };
+            console.log('Estado do caixa atualizado:', cashState);
         };
-        const updatePosAvailability = () => document.getElementById('pos-cash-closed-overlay')?.classList.toggle('hidden', cashState.isOpen);
+
+        const updatePosAvailability = () => {
+            const posOverlay = document.getElementById('pos-cash-closed-overlay');
+            if (posOverlay) posOverlay.classList.toggle('hidden', cashState.isOpen);
+        };
+
         const updateCashView = () => {
-            const indicator = document.getElementById('cash-status-indicator');
+            const indicator = document.getElementById('cash-state-indicator');
             if (cashState.isOpen) {
                 indicator.textContent = 'Caixa Aberto';
                 indicator.classList.add('open');
@@ -749,153 +754,283 @@ const room = new WebsimSocket();
         };
 
         const renderCashHistory = () => {
-            const tbody = document.querySelector('#cash-history-table tbody');
-            tbody.innerHTML = [...cashState.history].reverse().map(t => {
-                let typeClass = '';
-                if (t.type === 'entrada') typeClass = 'text-success';
-                else if (t.type === 'saida') typeClass = 'text-error';
-                else if (t.type === 'info') typeClass = 'text-info';
-                
-                const saleWasCancelled = t.type === 'entrada' && t.isCancelled;
-                const isCancellableSale = t.type === 'entrada' && t.saleId && !t.isCancelled;
-                
-                const actions = isCancellableSale
-                    ? `<button class="cancel-sale-btn" data-sale-id="${t.saleId}" data-cashevent-id="${t.id}" title="Cancelar Venda"><i class='bx bx-undo'></i></button>`
-                    : '';
+    const tbody = document.querySelector('#cash-history-table tbody');
+    if (!tbody) {
+        console.warn('Elemento #cash-history-table tbody não encontrado.');
+        return;
+    }
+    if (!Array.isArray(cashState?.history)) {
+        console.warn('cashState.history não é um array válido:', cashState?.history);
+        tbody.innerHTML = '<tr><td colspan="5">Nenhum histórico disponível</td></tr>';
+        return;
+    }
+    tbody.innerHTML = [...cashState.history].reverse().map(t => {
+        let typeClass = '';
+        if (t.type === 'entry') typeClass = 'text-success';
+        else if (t.type === 'exit') typeClass = 'text-error';
+        else if (t.type === 'open' || t.type === 'close') typeClass = 'text-info';
+        const isCancellable = t.saleId && t.type === 'entry' && !t.isCancelled;
+        const isEditable = (t.type === 'entry' || t.type === 'exit') && !t.saleId && !t.isCancelled;
+        let actions = '';
+        if (isCancellable) {
+            actions = `<button class="cancel-sale-btn" data-sale-id="${t.saleId}" data-event-id="${t.id}" title="Cancelar Venda"><i class='bx bx-undo'></i></button>`;
+        }
+        if (isEditable) {
+            actions += `
+                <button class="edit-cash-entry-btn" data-event-id="${t.id}" title="Editar"><i class='bx bxs-edit'></i></button>
+                <button class="delete-cash-entry-btn" data-event-id="${t.id}" title="Excluir"><i class='bx bxs-trash'></i></button>
+            `;
+        }
+        return `
+            <tr>
+                <td>${new Date(t.date).toLocaleString('pt-BR')}</td>
+                <td>${t.description || 'Sem descrição'} ${t.isCancelled ? '<span class="text-error" style="font-size: smaller;">(Cancelado)</span>' : ''}</td>
+                <td class="${typeClass}">${t.type}</td>
+                <td>${Utils.formatCurrency(t.amount)}</td>
+                <td class="action-btns">${actions}</td>
+            </tr>
+        `;
+    }).join('');
+};
 
-                return `
-                <tr>
-                    <td>${new Date(t.date).toLocaleString('pt-BR')}</td>
-                    <td>${t.desc} ${saleWasCancelled ? '<span class="text-error" style="font-size: 0.8em;">(Cancelada)</span>' : ''}</td>
-                    <td class="${typeClass}">${t.type}</td>
-                    <td>${Utils.formatCurrency(t.amount)}</td>
-                    <td class="action-btns">${actions}</td>
-                </tr>
-            `}).join('');
-        };
-        
         const openCash = async (e) => {
             e.preventDefault();
             const initialBalance = parseFloat(document.getElementById('initial-balance').value);
-            await cashEventsCollection.create({ entryType: 'info', desc: 'Abertura de Caixa', amount: initialBalance });
+            await cashEventsCollection.create({
+                entryType: 'open',
+                description: 'Abertura de Caixa',
+                amount: initialBalance
+            });
+            Utils.showToast('Caixa aberto com sucesso!');
+            document.getElementById('open-cash-form').reset();
         };
+
         const openCashEntryModal = (type) => {
-            document.getElementById('cash-entry-title').textContent = type === 'entrada' ? 'Registrar Entrada' : 'Registrar Saída';
+            const form = document.getElementById('cash-entry-form');
+            form.reset();
+            document.getElementById('cash-entry-title').textContent = type === 'entry' ? 'Registrar Entrada' : 'Registrar Saída';
             document.getElementById('cash-entry-type').value = type;
-            document.getElementById('cash-entry-form').reset();
+            document.getElementById('cash-entry-id').value = '';
             Utils.openModal('cash-entry-modal');
         };
+
+        const openCashEntryModalForEdit = (eventId) => {
+            const event = cashState.history.find(e => e.id === eventId);
+            if (!event) return Utils.showToast('Movimentação não encontrada.', 'error');
+            document.getElementById('cash-entry-title').textContent = `Editar ${event.type === 'entry' ? 'Entrada' : 'Saída'}`;
+            document.getElementById('cash-entry-id').value = event.id;
+            document.getElementById('cash-entry-type').value = event.type;
+            document.getElementById('cash-entry-amount').value = event.amount;
+            document.getElementById('cash-entry-desc').value = event.description;
+            Utils.openModal('cash-entry-modal');
+        };
+
         const saveCashEntry = async (e) => {
             e.preventDefault();
-            const type = document.getElementById('cash-entry-type').value;
+            const id = document.getElementById('cash-entry-id').value;
             const amount = parseFloat(document.getElementById('cash-entry-amount').value);
-            if (type === 'saida' && amount > cashState.balance) return Utils.showToast('Valor de saída maior que o saldo em caixa.', 'error');
-            await cashEventsCollection.create({ entryType: type, desc: document.getElementById('cash-entry-desc').value, amount: amount });
+            const description = document.getElementById('cash-entry-desc').value;
+            const type = document.getElementById('cash-entry-type').value;
+            if (type === 'exit' && amount > cashState.balance) {
+                return Utils.showToast('O valor da saída excede o saldo do caixa.', 'error');
+            }
+            const eventData = { entryType: type, description, amount };
+            if (id) {
+                await cashEventsCollection.update(id, eventData);
+                Utils.showToast('Movimentação atualizada com sucesso!');
+            } else {
+                await cashEventsCollection.create(eventData);
+                Utils.showToast('Movimentação registrada com sucesso!');
+            }
             Utils.closeModal('cash-entry-modal');
+            document.getElementById('cash-entry-form').reset();
         };
-        
-        const openCloseCashModal = () => {
-            if (!cashState.isOpen) return;
-            const sessionEvents = cashState.history.slice(cashState.history.findLastIndex(e => e.type === 'info'));
-            
-            const initial = sessionEvents.find(e => e.type === 'info')?.amount || 0;
-            const salesTotal = sessionEvents.filter(e => e.type === 'entrada' && e.saleId && !e.isCancelled).reduce((sum, e) => sum + e.amount, 0);
-            const otherEntries = sessionEvents.filter(e => e.type === 'entrada' && !e.saleId).reduce((sum, e) => sum + e.amount, 0);
-            const exits = sessionEvents.filter(e => e.type === 'saida').reduce((sum, e) => sum + e.amount, 0);
 
-            document.getElementById('summary-initial').textContent = Utils.formatCurrency(initial);
-            document.getElementById('summary-sales').textContent = Utils.formatCurrency(salesTotal);
-            document.getElementById('summary-entries').textContent = Utils.formatCurrency(otherEntries);
-            document.getElementById('summary-total-entries').textContent = Utils.formatCurrency(salesTotal + otherEntries);
-            document.getElementById('summary-exits').textContent = Utils.formatCurrency(exits);
-            document.getElementById('summary-final-balance').textContent = Utils.formatCurrency(cashState.balance);
-            
+        const deleteCashEntry = async (id) => {
+            if (confirm('Tem certeza que deseja excluir esta movimentação?')) {
+                await cashEventsCollection.delete(id);
+                Utils.showToast('Movimentação excluída com sucesso!');
+            }
+        };
+
+            const openCloseCashModal = () => {
+            if (!cashState.isOpen) {
+                Utils.showToast('O caixa está fechado.', 'error');
+                return;
+            }
+            const lastOpenIndex = cashState.history.findLastIndex(e => e.type === 'open');
+            if (lastOpenIndex === -1) {
+                Utils.showToast('Erro de estado do caixa.', 'error');
+                return;
+            }
+            const sessionEvents = cashState.history.slice(lastOpenIndex);
+            const initial = sessionEvents.find(e => e.type === 'open')?.amount || 0;
+            const salesTotal = sessionEvents.filter(e => e.type === 'entry' && e.saleId && !e.isCancelled).reduce((sum, e) => sum + e.amount, 0);
+            const otherEntries = sessionEvents.filter(e => e.type === 'entry' && !e.saleId && !e.isCancelled).reduce((sum, e) => sum + e.amount, 0);
+            const exits = sessionEvents.filter(e => e.type === 'exit' && !e.isCancelled).reduce((sum, e) => sum + e.amount, 0);
+            const elements = {
+                initial: document.getElementById('summary-initial'),
+                sales: document.getElementById('summary-sales'),
+                entries: document.getElementById('summary-entries'),
+                totalEntries: document.getElementById('summary-total-entries'),
+                exits: document.getElementById('summary-exits'),
+                finalBalance: document.getElementById('summary-final-balance')
+            };
+            if (Object.values(elements).some(el => !el)) {
+                console.error('Elementos de resumo do caixa não encontrados:', elements);
+                Utils.showToast('Erro ao carregar resumo do caixa.', 'error');
+                return;
+            }
+            elements.initial.textContent = Utils.formatCurrency(initial);
+            elements.sales.textContent = Utils.formatCurrency(salesTotal);
+            elements.entries.textContent = Utils.formatCurrency(otherEntries);
+            elements.totalEntries.textContent = Utils.formatCurrency(salesTotal + otherEntries);
+            elements.exits.textContent = Utils.formatCurrency(exits);
+            elements.finalBalance.textContent = Utils.formatCurrency(cashState.balance);
             Utils.openModal('close-cash-summary-modal');
         };
 
         const handleConfirmCloseCash = async (e) => {
             e.preventDefault();
-            await cashEventsCollection.create({ entryType: 'close', desc: 'Fechamento de Caixa', amount: cashState.balance });
-            Utils.closeModal('close-cash-summary-modal');
+            const confirmBtn = document.getElementById('confirm-close-cash-btn');
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = `<i class="bx bx-loader bx-spin"></i> Fechando...`;
+            try {
+                await cashEventsCollection.create({ 
+                    entryType: 'close', 
+                    description: 'Fechamento de Caixa', 
+                    amount: cashState.balance 
+                });
+                Utils.closeModal('close-cash-summary-modal');
+                Utils.showToast('Caixa fechado com sucesso!');
+            } catch (error) {
+                console.error('Erro ao fechar caixa:', error);
+                Utils.showToast('Erro ao fechar caixa.', 'error');
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = 'Confirmar Fechamento';
+            }
         };
 
-        // --- Visual Designer ---
+        const handleCancelSale = async (button) => {
+            const { saleId, eventId } = button.dataset;
+            if (!saleId || !eventId) {
+                return Utils.showToast('Erro: IDs não encontrados.', 'error');
+            }
+            if (confirm('Tem certeza que deseja cancelar esta venda? O estoque será restaurado.')) {
+                button.disabled = true;
+                Utils.showToast('Cancelando venda...', 'info');
+                try {
+                    const sale = sales.find(s => s.id === saleId);
+                    if (!sale) throw new Error('Venda não encontrada.');
+                    if (sale.items?.length) {
+                        const stockUpdates = sale.items.map(item => {
+                            const product = products.find(p => p.id === item.id);
+                            if (product) {
+                                return productsCollection.update(p.id, { stock: product.stock + item.qty });
+                            }
+                            return Promise.resolve();
+                        });
+                        await Promise.all(stockUpdates);
+                    }
+                    await cashEventsCollection.update(eventId, { isCancelled: true });
+                    await salesCollection.delete(saleId);
+                    Utils.showToast('Venda cancelada com sucesso!');
+                } catch (error) {
+                    console.error('Erro ao cancelar venda:', error);
+                    Utils.showToast(error.message || 'Erro ao cancelar venda.', 'error');
+                    button.disabled = false;
+                }
+            }
+        };
+
+        // Visual Designer
+        const applyAdminPanelSettings = (settings) => {
+            adminBody.style.setProperty('--color-primary', settings.adminColorPrimary || '');
+            adminBody.style.setProperty('--color-background', settings.adminColorBackground || '');
+            adminBody.style.setProperty('--color-surface', settings.adminColorSurface || '');
+            adminBody.style.setProperty('--color-text', settings.adminColorText || '');
+            if (settings.adminLogoUrl) {
+                const loginLogo = document.getElementById('login-logo-img');
+                const sidebarLogo = document.getElementById('sidebar-logo');
+                if (loginLogo) loginLogo.src = settings.adminLogoUrl;
+                if (sidebarLogo) sidebarLogo.src = settings.adminLogoUrl;
+            }
+        };
+
         const loadDesignerForm = () => {
-            if(!visualSettings) return;
+            if (!visualSettings) return;
             document.querySelectorAll('.designer-form [data-setting]').forEach(input => {
-                const key = input.dataset.setting;
-                const value = visualSettings[key];
+                const settingKey = input.dataset.setting;
+                const settingValue = visualSettings[settingKey];
                 if (input.type === 'file') {
                     const previewTargetId = input.dataset.previewTarget;
-                    if (previewTargetId) {
-                        const previewEl = document.getElementById(previewTargetId);
-                        if (previewEl && value) previewEl.src = value;
+                    if (previewTargetId && settingValue) {
+                        document.getElementById(previewTargetId).src = settingValue;
                     }
-                } else if(input.type === 'color') {
-                    input.value = value || '#000000'; // Default to black if no value
-                }
-                 else {
-                   input.value = value || '';
+                } else if (input.type === 'color') {
+                    input.value = settingValue || '#000000';
+                } else {
+                    input.value = settingValue || '';
                 }
             });
         };
-        
-        const handleDesignerChange = async (e) => {
-            if (e.target.type === 'file' || !e.target.dataset.setting || !visualSettings) return;
-            const key = e.target.dataset.setting;
-            const value = e.target.value;
-            if (visualSettings[key] !== value) {
-                await settingsCollection.update(visualSettings.id, { [key]: value });
-                // Toast is handled by the debounced timer to avoid spamming
-            }
-        };
 
-        const handleDesignerFileUpload = async (e) => {
-            const file = e.target.files[0];
-            const key = e.target.dataset.setting;
-            const previewTargetId = e.target.dataset.previewTarget;
-            if (!file || !key || !visualSettings) return;
-            Utils.showToast('Enviando imagem...', 'info');
-            try {
-                const url = await uploadFile(file);
+        const handleDesignerFileUpload = (e) => {
+            const input = e.target;
+            if (!input.files || !input.files[0]) return;
+            const settingKey = input.dataset.setting;
+            const previewTargetId = input.dataset.previewTarget;
+            const file = input.files[0];
+            if (!file.type.startsWith('image/')) {
+                Utils.showToast('Por favor, selecione uma imagem válida.', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const dataUrl = event.target.result;
                 if (previewTargetId) {
-                    const previewEl = document.getElementById(previewTargetId);
-                    if (previewEl) previewEl.src = url;
+                    document.getElementById(previewTargetId).src = dataUrl;
                 }
-                await settingsCollection.update(visualSettings.id, { [key]: url });
-                Utils.showToast('Imagem atualizada!', 'success');
-                 // If we uploaded the admin logo, refresh the images on the page immediately.
-                if (key === 'adminLogoUrl') {
-                    const loginLogo = document.getElementById('login-logo-img');
-                    const sidebarLogo = document.getElementById('sidebar-logo');
-                    if (loginLogo) loginLogo.src = url;
-                    if (sidebarLogo) sidebarLogo.src = url;
+                if (visualSettings && settingKey) {
+                    visualSettings[settingKey] = dataUrl;
+                    await settingsCollection.update(visualSettings.id, { [settingKey]: dataUrl });
+                    applyAdminPanelSettings(visualSettings);
+                    Utils.showToast('Imagem atualizada!');
                 }
-            } catch (error) {
-                Utils.showToast('Falha no upload da imagem.', 'error');
+            };
+            reader.readAsDataURL(file);
+        };
+
+        const handleDesignerChange = async (e) => {
+            if (e.target.type === 'file') return;
+            if (!e.target.dataset.setting || !visualSettings) return;
+            const settingKey = e.target.dataset.setting;
+            const settingValue = e.target.value;
+            if (visualSettings[settingKey] !== settingValue) {
+                visualSettings[settingKey] = settingValue;
+                if (settingKey === 'theme' || settingKey === 'fontFamily') {
+                    applyGlobalSettings(visualSettings, adminBody);
+                } else if (settingKey.startsWith('admin')) {
+                    applyAdminPanelSettings(visualSettings);
+                }
+                await settingsCollection.update(visualSettings.id, { [settingKey]: settingValue });
             }
         };
 
-        // --- Event Listeners & Initializations ---
-        const bindAdminEvents = () => {
+        // Event Listeners
+        const bindAdminEventListeners = () => {
             document.getElementById('login-form').addEventListener('submit', handleLogin);
             document.getElementById('logout-btn').addEventListener('click', handleLogout);
             document.querySelectorAll('.nav-link').forEach(link => link.addEventListener('click', handleNav));
-            
-            // Product modal & list
             document.getElementById('add-product-btn').addEventListener('click', () => openProductModal());
             document.getElementById('product-form').addEventListener('submit', saveProduct);
             document.getElementById('cancel-product-btn').addEventListener('click', () => Utils.closeModal('product-modal'));
             document.getElementById('product-images').addEventListener('change', handleImageSelection);
             document.getElementById('product-search').addEventListener('input', renderProducts);
-
-            // Customer modal
             document.getElementById('add-customer-btn').addEventListener('click', () => openCustomerModal());
             document.getElementById('customer-form').addEventListener('submit', saveCustomer);
             document.getElementById('cancel-customer-btn').addEventListener('click', () => Utils.closeModal('customer-modal'));
             document.getElementById('customer-search').addEventListener('input', renderCustomers);
-            
-            // Online Orders Filter
             document.querySelectorAll('#orders-section .filter-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     document.querySelectorAll('#orders-section .filter-btn').forEach(b => b.classList.remove('active'));
@@ -904,80 +1039,62 @@ const room = new WebsimSocket();
                     renderOnlineOrders();
                 });
             });
-
-            // POS
             document.getElementById('pos-product-search').addEventListener('input', renderPosProducts);
             document.getElementById('pos-finalize-btn').addEventListener('click', registerPosSale);
-
-            // Cash Control
             document.getElementById('open-cash-form').addEventListener('submit', openCash);
-            document.getElementById('register-entry-btn').addEventListener('click', () => openCashEntryModal('entrada'));
-            document.getElementById('register-exit-btn').addEventListener('click', () => openCashEntryModal('saida'));
+            document.getElementById('register-entry-btn').addEventListener('click', () => openCashEntryModal('entry'));
+            document.getElementById('register-exit-btn').addEventListener('click', () => openCashEntryModal('exit'));
             document.getElementById('cash-entry-form').addEventListener('submit', saveCashEntry);
             document.querySelectorAll('.cancel-cash-entry-btn').forEach(btn => btn.addEventListener('click', () => Utils.closeModal('cash-entry-modal')));
             document.getElementById('close-cash-btn').addEventListener('click', openCloseCashModal);
             document.getElementById('close-cash-summary-form').addEventListener('submit', handleConfirmCloseCash);
             document.getElementById('cancel-close-cash-summary-btn').addEventListener('click', () => Utils.closeModal('close-cash-summary-modal'));
-
             document.querySelector('#cash-history-table tbody').addEventListener('click', (e) => {
-                const button = e.target.closest('.cancel-sale-btn');
-                if (button) {
-                    // handleCancelSale(button); // This function seems to have been removed in prev prompts.
-                }
+                const cancelBtn = e.target.closest('.cancel-sale-btn');
+                const editBtn = e.target.closest('.edit-cash-entry-btn');
+                const deleteBtn = e.target.closest('.delete-cash-entry-btn');
+                if (cancelBtn) handleCancelSale(cancelBtn);
+                else if (editBtn) openCashEntryModalForEdit(editBtn.dataset.eventId);
+                else if (deleteBtn) deleteCashEntry(deleteBtn.dataset.eventId);
             });
-
-            // Designer
             const designerForm = document.getElementById('designer-form');
             if (designerForm) {
                 let designerDebounceTimer;
                 designerForm.addEventListener('input', (e) => {
-                    handleDesignerChange(e);
-                    
-                    if (e.target.type !== 'file' && e.target.dataset.setting) {
-                         clearTimeout(designerDebounceTimer);
-                         designerDebounceTimer = setTimeout(() => {
+                    if (e.target.type === 'file') {
+                        handleDesignerFileUpload(e);
+                    } else {
+                        handleDesignerChange(e);
+                    }
+                    if (e.target.dataset.setting) {
+                        clearTimeout(designerDebounceTimer);
+                        designerDebounceTimer = setTimeout(() => {
                             Utils.showToast('Alteração salva!', 'success');
-                         }, 1200);
+                        }, 1200);
                     }
                 });
-
-                designerForm.querySelector('#store-logo-file')?.addEventListener('change', handleDesignerFileUpload);
-                designerForm.querySelector('#store-bg-file')?.addEventListener('change', handleDesignerFileUpload);
-                designerForm.querySelector('#admin-logo-file')?.addEventListener('change', handleDesignerFileUpload);
             }
-
-            // Designer Preview Toggles
             document.querySelectorAll('.preview-toggle-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const view = btn.dataset.view; // 'desktop' or 'mobile'
+                    const view = btn.dataset.view;
                     const wrapper = document.getElementById('store-preview-wrapper');
-
-                    // Update button active state
                     document.querySelectorAll('.preview-toggle-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-
-                    // Update wrapper class
                     wrapper.classList.remove('view-desktop', 'view-mobile');
                     wrapper.classList.add(`view-${view}`);
                 });
             });
-
-            // Sidebar Toggle
             const adminPanel = document.getElementById('admin-panel');
             const sidebarToggle = document.getElementById('sidebar-toggle-btn');
-
             if (adminPanel && sidebarToggle) {
-                 const toggleSidebar = () => {
+                const toggleSidebar = () => {
                     adminPanel.classList.toggle('sidebar-collapsed');
                     const isCollapsed = adminPanel.classList.contains('sidebar-collapsed');
                     localStorage.setItem('sidebarCollapsed', isCollapsed);
                     sidebarToggle.innerHTML = isCollapsed ? "<i class='bx bx-chevron-right'></i>" : "<i class='bx bx-chevron-left'></i>";
                     sidebarToggle.title = isCollapsed ? 'Expandir menu' : 'Recolher menu';
                 };
-
                 sidebarToggle.addEventListener('click', toggleSidebar);
-
-                // Check for saved state on load
                 if (localStorage.getItem('sidebarCollapsed') === 'true') {
                     adminPanel.classList.add('sidebar-collapsed');
                     sidebarToggle.innerHTML = "<i class='bx bx-chevron-right'></i>";
@@ -985,27 +1102,23 @@ const room = new WebsimSocket();
                 }
             }
         };
-        
-        bindAdminEvents();
+
+        bindAdminEventListeners();
         checkAuth();
     }
 
-
-    // =================================================================
-    // PUBLIC STORE LOGIC (`loja.html`)
-    // =================================================================
-    function initStore() {
-        // --- Websim Collections ---
-        const productsCollection = room.collection('product_v3');
-        const settingsCollection = room.collection('visualSetting_v1');
-        const customersCollection = room.collection('customer_v1');
-        const salesCollection = room.collection('sale_v1');
-
+    // Public Store Logic
+    function initStore(storeBody) {
+        const productsCollection = LocalStorageDB.getCollection('product_v3');
+        const settingsCollection = LocalStorageDB.getCollection('visualSetting_v2');
+        const customersCollection = LocalStorageDB.getCollection('customer_v1');
+        const salesCollection = LocalStorageDB.getCollection('sale_v1');
         let products = [];
         let settings = {};
         let cart = JSON.parse(localStorage.getItem('cart') || '[]');
         let customers = [];
-        
+        let currentView = 'grid'; // Default to grid view
+
         const bindStoreSubscriptions = () => {
             productsCollection.subscribe(data => {
                 products = data;
@@ -1015,7 +1128,8 @@ const room = new WebsimSocket();
             settingsCollection.subscribe(settingsList => {
                 if (settingsList.length > 0) {
                     settings = settingsList[0];
-                    applyVisualSettings();
+                    applyGlobalSettings(settings, storeBody);
+                    applyStoreSettings(settings);
                 }
             });
             customersCollection.subscribe(data => {
@@ -1023,29 +1137,25 @@ const room = new WebsimSocket();
             });
         };
 
-        const applyVisualSettings = () => {
+        const applyStoreSettings = (settings) => {
             document.title = settings.storeName || 'Loja Online';
-            document.getElementById('store-name-header').textContent = settings.storeName || 'Sua Loja';
-            document.getElementById('store-slogan-header').textContent = settings.storeSlogan || 'Seu Slogan';
-            document.getElementById('footer-store-name').textContent = settings.storeName || 'Sua Loja';
+            document.getElementById('store-name-header').textContent = settings.storeName || 'MK World Imports';
+            document.getElementById('store-slogan-header').textContent = settings.storeSlogan || 'Eletrônicos e Acessórios';
+            document.getElementById('footer-store-name').textContent = settings.storeName || 'MK World Imports';
             document.getElementById('store-logo-img').src = settings.logoUrl || '/logoloja.png';
             if (settings.backgroundUrl) {
                 document.getElementById('hero-banner').style.backgroundImage = `url('${settings.backgroundUrl}')`;
             }
-            
-            const root = document.documentElement;
-            root.style.setProperty('--color-primary', settings.colorPrimary || '#3B82F6');
-            root.style.setProperty('--color-background', settings.colorBackground || '#111827');
-            root.style.setProperty('--color-text', settings.colorText || '#F9FAFB');
-            root.style.setProperty('--color-card', settings.colorCard || '#1F2937');
-
-            // Render Social Links
+            storeBody.style.setProperty('--color-primary', settings.storeColorPrimary || '#3B82F6');
+            storeBody.style.setProperty('--color-background', settings.storeColorBackground || '#111827');
+            storeBody.style.setProperty('--color-text', settings.storeColorText || '#F9FAFB');
+            storeBody.style.setProperty('--color-card', settings.storeColorCard || '#1F2937');
             const socialContainer = document.getElementById('social-links-container');
             if (socialContainer) {
-                socialContainer.innerHTML = ''; // Clear existing
+                socialContainer.innerHTML = '';
                 if (settings.whatsappNumber) {
                     const waLink = document.createElement('a');
-                    waLink.href = `https://wa.me/${settings.whatsappNumber.replace(/\D/g, '')}`;
+                    waLink.href = `https://wa.me/${Utils.cleanPhoneNumber(settings.whatsappNumber)}`;
                     waLink.target = '_blank';
                     waLink.title = 'WhatsApp';
                     waLink.innerHTML = `<i class='bx bxl-whatsapp'></i>`;
@@ -1062,23 +1172,21 @@ const room = new WebsimSocket();
             }
         };
 
-        // --- Product Catalog ---
         const renderProducts = () => {
             const grid = document.getElementById('products-list');
             if (!grid) return;
             const search = document.getElementById('product-search-input').value.toLowerCase();
             const category = document.getElementById('category-filter').value;
-            
-            const filteredProducts = products.filter(p => (p.name.toLowerCase().includes(search) || (p.desc || '').toLowerCase().includes(search)) && (category === 'all' || p.category === category) );
-            
+            const filteredProducts = products.filter(p => 
+                ((p.name || '').toLowerCase().includes(search) || (p.desc || '').toLowerCase().includes(search)) && 
+                (category === 'all' || p.category === category)
+            );
+            grid.classList.remove('view-grid', 'view-list');
+            grid.classList.add(`view-${currentView}`);
             if (filteredProducts.length === 0) {
-                grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem 0;">Nenhum produto encontrado.</p>`;
-                if (products.length === 0) {
-                   grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem 0;">Nenhum produto cadastrado ainda.</p>`;
-                }
+                grid.innerHTML = `<p style="grid-column: 1 / -1; text-align: center; padding: 2rem;">${products.length === 0 ? 'Nenhum produto cadastrado ainda.' : 'Nenhum produto encontrado.'}</p>`;
                 return;
             }
-
             grid.innerHTML = [...filteredProducts].reverse().map(p => `
                 <div class="product-card ${p.stock <= 0 ? 'out-of-stock' : ''}" data-id="${p.id}" title="Clique para ver mais detalhes">
                     <div class="product-image-container">
@@ -1086,317 +1194,284 @@ const room = new WebsimSocket();
                     </div>
                     <div class="product-info">
                         <h3>${p.name}</h3>
-                        <span class="product-category">${p.category}</span>
+                        <span class="product-category">${p.category || 'Sem Categoria'}</span>
                         <p class="product-stock">${p.stock > 0 ? `Estoque: ${p.stock} un.` : 'Esgotado'}</p>
                         <p class="product-price">${Utils.formatCurrency(p.price)}</p>
-                        <button class="add-to-cart-btn" data-id="${p.id}" ${p.stock <= 0 ? 'disabled' : ''}><i class='bx bxs-cart-add'></i> ${p.stock > 0 ? 'Adicionar' : 'Indisponível'}</button>
+                        ${currentView === 'list' && p.desc ? `<p class="product-desc">${p.desc.slice(0, 100)}${p.desc.length > 100 ? '...' : ''}</p>` : ''}
+                        <button class="add-to-cart-btn" data-id="${p.id}" ${p.stock <= 0 ? 'disabled' : ''}>Adicionar ao Carrinho</button>
                     </div>
-                </div>`).join('');
-
-            document.querySelectorAll('.add-to-cart-btn').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); addToCart(btn.dataset.id); }));
-            document.querySelectorAll('.product-card').forEach(card => card.addEventListener('click', () => openProductDetailModal(card.dataset.id)));
+                </div>
+            `).join('');
+            document.querySelectorAll('.product-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    if (!e.target.closest('.add-to-cart-btn')) {
+                        openProductDetailModal(card.dataset.id);
+                    }
+                });
+            });
+            document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    addToCart(btn.dataset.id);
+                });
+            });
         };
-        
+
         const populateCategoryFilter = () => {
-            const categories = [...new Set(products.map(p => p.category))].filter(Boolean);
-            const filter = document.getElementById('category-filter');
-            // Reset filter but keep the first option
-            filter.innerHTML = `<option value="all">Todas as Categorias</option>`;
-            filter.innerHTML += categories.map(c => `<option value="${c}">${c}</option>`).join('');
-        };
-        
-        // --- Cart Logic ---
-        const saveCart = () => localStorage.setItem('cart', JSON.stringify(cart));
-        const addToCart = (id) => {
-            const product = products.find(p => p.id == id);
-            if (!product || product.stock <= 0) return Utils.showToast('Produto indisponível.', 'error');
-            const cartItem = cart.find(item => item.id == id);
-            if (cartItem) {
-                if (cartItem.qty < product.stock) cartItem.qty++; else return Utils.showToast('Estoque máximo no carrinho.', 'error');
-            } else {
-                cart.push({ id: product.id, name: product.name, price: product.price, images: product.images, stock: product.stock, qty: 1 });
-            }
-            saveCart();
-            updateCart();
-            Utils.showToast(`${product.name} adicionado ao carrinho!`);
-        };
-        
-        const updateCart = () => {
-            const cartContainer = document.getElementById('cart-items-container');
-            const cartTotalEl = document.getElementById('cart-total');
-            const cartCountEl = document.getElementById('cart-count');
-            const checkoutBtn = document.getElementById('checkout-btn');
-            
-            let total = 0;
-            if (cart.length === 0) {
-                cartContainer.innerHTML = `
-                    <div class="empty-cart-view">
-                        <i class='bx bx-cart-alt'></i>
-                        <h4>Seu carrinho está vazio</h4>
-                        <p>Adicione produtos para vê-los aqui.</p>
-                        <button id="continue-shopping-btn">Continuar comprando</button>
-                    </div>`;
-                document.getElementById('continue-shopping-btn').addEventListener('click', () => Utils.closeModal('cart-modal'));
-            } else {
-                cartContainer.innerHTML = cart.map(item => {
-                    total += item.price * item.qty;
-                    return `
-                        <div class="cart-item">
-                            <img src="${(item.images && item.images[0]) || '/placeholder.png'}" alt="${item.name}" width="70" height="70" decoding="async">
-                            <div class="cart-item-info">
-                                <h4>${item.name}</h4>
-                                <p>${Utils.formatCurrency(item.price)}</p>
-                            </div>
-                            <div class="cart-item-actions">
-                                <input type="number" class="cart-item-qty" value="${item.qty}" min="1" data-id="${item.id}">
-                                <button class="remove-from-cart-btn" data-id="${item.id}" title="Remover"><i class='bx bxs-trash'></i></button>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
-
-            cartTotalEl.textContent = Utils.formatCurrency(total);
-            cartCountEl.textContent = cart.reduce((sum, item) => sum + item.qty, 0);
-            checkoutBtn.disabled = cart.length === 0;
-
-            document.querySelectorAll('.cart-item-qty').forEach(input => input.addEventListener('change', updateCartItemQty));
-            document.querySelectorAll('.remove-from-cart-btn').forEach(btn => btn.addEventListener('click', () => removeFromCart(btn.dataset.id)));
-        };
-        
-        const updateCartItemQty = (e) => {
-            const id = e.target.dataset.id;
-            const newQty = parseInt(e.target.value, 10);
-            const item = cart.find(i => i.id == id);
-            const product = products.find(p => p.id == id);
-            const maxStock = product ? product.stock : item.stock;
-
-            if (item && newQty > 0) {
-                if (newQty > maxStock) {
-                    Utils.showToast(`Estoque máximo para este item é ${maxStock}.`, 'error');
-                    e.target.value = maxStock; // revert to max stock
-                    item.qty = maxStock;
-                } else {
-                    item.qty = newQty;
-                }
-                saveCart();
-                updateCart();
-            }
+            const select = document.getElementById('category-filter');
+            if (!select) return;
+            const categories = [...new Set(products.map(p => p.category).filter(c => c))];
+            select.innerHTML = '<option value="all">Todas as Categorias</option>' + 
+                categories.map(c => `<option value="${c}">${c}</option>`).join('');
         };
 
-        const removeFromCart = (id) => { cart = cart.filter(item => item.id != id); saveCart(); updateCart(); };
-
-        // --- Product Detail & Checkout ---
         const openProductDetailModal = (id) => {
             const product = products.find(p => p.id == id);
             if (!product) return;
-            
             const content = document.getElementById('product-detail-content');
-            
-            const getYoutubeEmbedUrl = (url) => {
-                if (!url) return '';
-                let videoId;
-                if (url.includes('youtu.be/')) {
-                    videoId = url.split('youtu.be/')[1].split('?')[0];
-                } else if (url.includes('watch?v=')) {
-                    videoId = url.split('watch?v=')[1].split('&')[0];
-                }
-                return videoId ? `https://www.youtube.com/embed/${videoId}` : '';
-            };
-            
-            const embedUrl = getYoutubeEmbedUrl(product.videoUrl);
-
             content.innerHTML = `
-                <div class="product-detail-media">
-                    <div class="product-detail-gallery">
-                        <img src="${(product.images && product.images[0]) || '/placeholder.png'}" alt="${product.name}" class="main-image" id="detail-main-image" decoding="async">
-                        <div class="product-detail-thumbnails">
-                            ${(product.images || []).map(img => `<img src="${img}" alt="thumbnail" class="thumbnail" width="70" height="70" decoding="async">`).join('')}
-                        </div>
+                <div class="product-detail">
+                    <div class="product-detail-images">
+                        ${product.images && product.images.length > 0 ? `
+                            <img src="${product.images[0]}" alt="${product.name}" class="main-image">
+                            <div class="thumbnail-gallery">
+                                ${product.images.map((img, i) => `
+                                    <img src="${img}" alt="${product.name} ${i + 1}" class="thumbnail ${i === 0 ? 'active' : ''}">
+                                `).join('')}
+                            </div>
+                        ` : `<img src="/placeholder.png" alt="${product.name}" class="main-image">`}
+                        ${product.videoUrl ? `
+                            <div class="product-video">
+                                <iframe src="${product.videoUrl.replace('watch?v=', 'embed/')}" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                        ` : ''}
                     </div>
-                    ${embedUrl ? `
-                    <div class="product-detail-video">
-                        <iframe src="${embedUrl}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <div class="product-detail-info">
+                        <h2>${product.name}</h2>
+                        <p class="product-category">${product.category || 'Sem Categoria'}</p>
+                        <p class="product-price">${Utils.formatCurrency(product.price)}</p>
+                        <p class="product-stock">${product.stock > 0 ? `Estoque: ${product.stock} un.` : 'Esgotado'}</p>
+                        ${product.desc ? `<p class="product-desc">${product.desc}</p>` : ''}
+                        <button class="add-to-cart-btn" data-id="${product.id}" ${product.stock <= 0 ? 'disabled' : ''}>Adicionar ao Carrinho</button>
                     </div>
-                    ` : ''}
-                </div>
-                <div class="product-detail-info">
-                    <h3>${product.name}</h3>
-                    <p class="product-price">${Utils.formatCurrency(product.price)}</p>
-                    <p class="product-desc">${product.desc || 'Sem descrição.'}</p>
-                    <button class="add-to-cart-btn" data-id="${product.id}" ${product.stock <= 0 ? 'disabled' : ''}><i class='bx bxs-cart-add'></i> ${product.stock > 0 ? 'Adicionar ao Carrinho' : 'Esgotado'}</button>
                 </div>
             `;
-            
-            // Render related products
+            const relatedProducts = products.filter(p => p.id !== id && p.category === product.category && p.stock > 0).slice(0, 3);
             const relatedContainer = document.getElementById('related-products-list');
-            const relatedProducts = products.filter(p => p.category === product.category && p.id !== product.id).slice(0, 4);
-            if (relatedProducts.length > 0) {
-                 document.getElementById('related-products-container').style.display = 'block';
-                 relatedContainer.innerHTML = relatedProducts.map(p => `
-                    <div class="product-card" data-id="${p.id}" title="${p.name}">
-                        <div class="product-image-container">
-                             <img src="${(p.images && p.images[0]) || '/placeholder.png'}" alt="${p.name}" loading="lazy" decoding="async">
-                        </div>
-                        <div class="product-info">
-                             <h3>${p.name}</h3>
-                             <p class="product-price">${Utils.formatCurrency(p.price)}</p>
-                        </div>
-                    </div>`).join('');
-                relatedContainer.querySelectorAll('.product-card').forEach(card => card.addEventListener('click', () => {
-                    Utils.closeModal('product-detail-modal');
-                    openProductDetailModal(card.dataset.id);
-                }));
-            } else {
-                document.getElementById('related-products-container').style.display = 'none';
-            }
-
-
-            const mainImage = content.querySelector('#detail-main-image');
-            content.querySelectorAll('.product-detail-thumbnails .thumbnail').forEach(thumb => {
+            relatedContainer.innerHTML = relatedProducts.length > 0 ? relatedProducts.map(p => `
+                <div class="product-card" data-id="${p.id}">
+                    <img src="${(p.images && p.images[0]) || '/placeholder.png'}" alt="${p.name}" loading="lazy">
+                    <h5>${p.name}</h5>
+                    <p>${Utils.formatCurrency(p.price)}</p>
+                </div>
+            `).join('') : '<p>Nenhum produto relacionado encontrado.</p>';
+            document.querySelectorAll('#related-products-list .product-card').forEach(card => {
+                card.addEventListener('click', () => openProductDetailModal(card.dataset.id));
+            });
+            document.querySelectorAll('#product-detail-content .add-to-cart-btn').forEach(btn => {
+                btn.addEventListener('click', () => addToCart(btn.dataset.id));
+            });
+            document.querySelectorAll('.thumbnail').forEach(thumb => {
                 thumb.addEventListener('click', () => {
-                    mainImage.src = thumb.src;
-                    content.querySelectorAll('.thumbnail.active').forEach(t => t.classList.remove('active'));
+                    document.querySelector('.main-image').src = thumb.src;
+                    document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
                     thumb.classList.add('active');
                 });
             });
-            if(content.querySelector('.thumbnail')) {
-               content.querySelector('.thumbnail').classList.add('active');
-            }
-            
-            content.querySelector('.add-to-cart-btn').addEventListener('click', () => {
-                addToCart(product.id);
-            });
-
             Utils.openModal('product-detail-modal');
         };
-        
-        const handleCheckout = () => {
-            if (cart.length > 0) {
-                 const summaryContainer = document.getElementById('checkout-order-summary');
-                 const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-                 summaryContainer.innerHTML = `
-                    <h4>Resumo do Pedido</h4>
+
+        const addToCart = (id) => {
+            const product = products.find(p => p.id == id);
+            if (!product || product.stock <= 0) {
+                return Utils.showToast('Produto esgotado!', 'error');
+            }
+            const existingItem = cart.find(item => item.id === id);
+            if (existingItem) {
+                if (existingItem.qty < product.stock) {
+                    existingItem.qty++;
+                } else {
+                    return Utils.showToast('Quantidade máxima em estoque atingida!', 'error');
+                }
+            } else {
+                cart.push({ ...product, qty: 1 });
+            }
+            localStorage.setItem('cart', JSON.stringify(cart));
+            updateCart();
+            Utils.showToast('Produto adicionado ao carrinho!');
+        };
+
+        const updateCart = () => {
+            const cartItems = document.getElementById('cart-items-container');
+            const cartTotal = document.getElementById('cart-total');
+            const cartCount = document.getElementById('cart-count');
+            const checkoutBtn = document.getElementById('checkout-btn');
+            if (!cartItems || !cartTotal || !cartCount || !checkoutBtn) return;
+            cartItems.innerHTML = cart.length === 0 ? '<p style="text-align: center; padding: 1rem;">Seu carrinho está vazio.</p>' : cart.map(item => `
+                <div class="cart-item">
+                    <img src="${(item.images && item.images[0]) || '/placeholder.png'}" alt="${item.name}" class="cart-item-img">
+                    <div class="cart-item-info">
+                        <span>${item.name}</span>
+                        <div class="cart-item-controls">
+                            <button class="cart-qty-btn" data-id="${item.id}" data-action="decrease">-</button>
+                            <span>${item.qty}</span>
+                            <button class="cart-qty-btn" data-id="${item.id}" data-action="increase">+</button>
+                        </div>
+                    </div>
+                    <span>${Utils.formatCurrency(item.price * item.qty)}</span>
+                    <button class="remove-cart-item-btn" data-id="${item.id}">×</button>
+                </div>
+            `).join('');
+            const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+            cartTotal.textContent = Utils.formatCurrency(total);
+            cartCount.textContent = cart.reduce((sum, item) => sum + item.qty, 0);
+            checkoutBtn.disabled = cart.length === 0;
+            document.querySelectorAll('.remove-cart-item-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    cart = cart.filter(item => item.id !== btn.dataset.id);
+                    localStorage.setItem('cart', JSON.stringify(cart));
+                    updateCart();
+                });
+            });
+            document.querySelectorAll('.cart-qty-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    const action = btn.dataset.action;
+                    const item = cart.find(i => i.id === id);
+                    const product = products.find(p => p.id === id);
+                    if (!item || !product) return;
+                    if (action === 'increase' && item.qty < product.stock) {
+                        item.qty++;
+                    } else if (action === 'decrease' && item.qty > 1) {
+                        item.qty--;
+                    } else if (action === 'decrease' && item.qty === 1) {
+                        cart = cart.filter(i => i.id !== id);
+                    } else {
+                        Utils.showToast('Quantidade máxima em estoque atingida!', 'error');
+                        return;
+                    }
+                    localStorage.setItem('cart', JSON.stringify(cart));
+                    updateCart();
+                });
+            });
+        };
+
+        const openCheckoutModal = () => {
+            if (cart.length === 0) return Utils.showToast('O carrinho está vazio.', 'error');
+            const orderSummary = document.getElementById('checkout-order-summary');
+            const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+            orderSummary.innerHTML = `
+                <h4>Resumo do Pedido</h4>
+                <ul>
                     ${cart.map(item => `
-                        <div class="summary-item">
+                        <li>
                             <span>${item.qty}x ${item.name}</span>
                             <span>${Utils.formatCurrency(item.price * item.qty)}</span>
-                        </div>
+                        </li>
                     `).join('')}
-                    <div class="summary-total">
-                        <span>Total</span>
-                        <span>${Utils.formatCurrency(total)}</span>
-                    </div>
-                 `;
-
-                 Utils.closeModal('cart-modal');
-                 Utils.openModal('checkout-modal');
-            } else {
-                Utils.showToast('Seu carrinho está vazio.', 'error');
-            }
+                </ul>
+                <p><strong>Total:</strong> ${Utils.formatCurrency(total)}</p>
+            `;
+            document.getElementById('checkout-form').reset();
+            Utils.openModal('checkout-modal');
         };
-        
-        const finalizeOrderViaWhatsapp = async (e) => {
+
+        const handleCheckout = async (e) => {
             e.preventDefault();
-            if (cart.length === 0) return;
-            const customerName = document.getElementById('checkout-customer-name').value.trim();
-            const customerPhone = document.getElementById('checkout-customer-phone').value.trim();
-            if (!customerName || !customerPhone) return Utils.showToast('Por favor, preencha seu nome e telefone.', 'error');
-
-            Utils.showToast('Registrando seu pedido...', 'info');
-
-            let customer = customers.find(c => c.phone === customerPhone);
-            if (!customer) {
-                customer = await customersCollection.create({ name: customerName, phone: customerPhone, cpf: '', email: '', address: '' });
-                Utils.showToast('Cadastro realizado com sucesso!', 'success');
-            } else {
-                // Update customer name if it has changed
-                if(customer.name !== customerName) {
-                    await customersCollection.update(customer.id, { name: customerName });
-                }
-            }
-            
-            const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+            const name = document.getElementById('checkout-customer-name').value.trim();
+            const phone = Utils.cleanPhoneNumber(document.getElementById('checkout-customer-phone').value);
             const paymentMethod = document.getElementById('payment-method-select').value;
-            
-            const saleItems = cart.map(item => ({ id: item.id, name: item.name, price: item.price, qty: item.qty, category: item.category }));
-
-            const saleRecord = {
-                items: saleItems,
-                total: total,
-                paymentMethod: paymentMethod,
-                customerName: customerName,
-                customerId: customer.id,
-                type: 'online',
-                status: 'pending'
-            };
-            await salesCollection.create(saleRecord);
-
+            if (!name || !phone) {
+                return Utils.showToast('Por favor, preencha todos os campos obrigatórios.', 'error');
+            }
+            if (!phone.match(/^\d{10,15}$/)) {
+                return Utils.showToast('Número de telefone inválido. Use o formato: +5511987654321', 'error');
+            }
+            const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
             for (const item of cart) {
                 const product = products.find(p => p.id === item.id);
-                if (product) { 
-                    await productsCollection.update(product.id, { stock: product.stock - item.qty });
+                if (product.stock < item.qty) {
+                    Utils.closeModal('checkout-modal');
+                    return Utils.showToast(`Estoque insuficiente para ${item.name}.`, 'error');
                 }
             }
-
-            let message = `Olá, *${settings.storeName || 'Loja'}*!\n\nMeu nome é *${customerName}* e gostaria de finalizar meu pedido.\n\n*Itens do Pedido:*\n`;
-            cart.forEach(item => { message += `- ${item.qty}x ${item.name} (${Utils.formatCurrency(item.price)})\n`; });
-            message += `\n*Total: ${Utils.formatCurrency(total)}*\n*Forma de Pagamento: ${paymentMethod}*`;
-            
-            window.open(`https://wa.me/${settings.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank');
-            
-            cart = [];
-            saveCart();
-            updateCart();
-            Utils.closeModal('checkout-modal');
-            Utils.showToast('Pedido enviado! Finalize a compra no WhatsApp.');
+            const finalizeBtn = document.getElementById('finalize-whatsapp-btn');
+            finalizeBtn.disabled = true;
+            finalizeBtn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Finalizando...`;
+            try {
+                let customer = customers.find(c => c.phone === phone);
+                if (!customer) {
+                    customer = await customersCollection.create({ name, phone });
+                } else if (customer.name !== name) {
+                    await customersCollection.update(customer.id, { name });
+                }
+                const saleData = {
+                    items: cart.map(item => ({ ...item, qty: item.qty })),
+                    total,
+                    paymentMethod,
+                    customerName: name,
+                    customerId: customer.id,
+                    type: 'online',
+                    status: 'pending'
+                };
+                const createdSale = await salesCollection.create(saleData);
+                for (const item of cart) {
+                    const product = products.find(p => p.id === item.id);
+                    await productsCollection.update(item.id, { stock: product.stock - item.qty });
+                }
+                const orderDetails = cart.map(item => `${item.qty}x ${item.name} - ${Utils.formatCurrency(item.price * item.qty)}`).join('\n');
+                const message = encodeURIComponent(
+                    `Olá, sou ${name} e gostaria de confirmar meu pedido:\n\n` +
+                    `${orderDetails}\n\n` +
+                    `Total: ${Utils.formatCurrency(total)}\n` +
+                    `Pagamento: ${paymentMethod}\n` +
+                    `Telefone: ${phone}`
+                );
+                const whatsappUrl = `https://wa.me/${Utils.cleanPhoneNumber(settings.whatsappNumber)}?text=${message}`;
+                cart = [];
+                localStorage.setItem('cart', JSON.stringify(cart));
+                updateCart();
+                Utils.closeModal('checkout-modal');
+                Utils.showToast('Pedido registrado! Redirecionando para o WhatsApp...', 'success');
+                setTimeout(() => {
+                    window.open(whatsappUrl, '_blank');
+                }, 1000);
+            } catch (error) {
+                console.error('Checkout error:', error);
+                Utils.showToast('Erro ao finalizar o pedido.', 'error');
+                finalizeBtn.disabled = false;
+                finalizeBtn.innerHTML = 'Confirmar e Finalizar via WhatsApp';
+            }
         };
 
-        const bindStoreEvents = () => {
-            document.getElementById('product-search-input').addEventListener('input', renderProducts);
-            document.getElementById('category-filter').addEventListener('change', renderProducts);
-            document.getElementById('cart-button').addEventListener('click', () => Utils.openModal('cart-modal'));
-            document.getElementById('close-cart-btn').addEventListener('click', () => Utils.closeModal('cart-modal'));
-            document.getElementById('checkout-btn').addEventListener('click', handleCheckout);
-            document.getElementById('close-checkout-btn').addEventListener('click', () => Utils.closeModal('checkout-modal'));
-            document.getElementById('checkout-form').addEventListener('submit', finalizeOrderViaWhatsapp);
-            document.getElementById('close-product-detail-btn').addEventListener('click', () => Utils.closeModal('product-detail-modal'));
-        
-            // View Toggle Logic
-            const productsListEl = document.getElementById('products-list');
-            const gridViewBtn = document.getElementById('grid-view-btn');
-            const listViewBtn = document.getElementById('list-view-btn');
+        const toggleView = (view) => {
+            currentView = view;
+            document.getElementById('grid-view-btn').classList.toggle('active', view === 'grid');
+            document.getElementById('list-view-btn').classList.toggle('active', view === 'list');
+            renderProducts();
+        };
 
-            if (productsListEl && gridViewBtn && listViewBtn) {
-                const applyView = (view) => {
-                    if (view === 'list') {
-                        productsListEl.classList.add('view-list');
-                        listViewBtn.classList.add('active');
-                        gridViewBtn.classList.remove('active');
-                    } else { // grid
-                        productsListEl.classList.remove('view-list');
-                        gridViewBtn.classList.add('active');
-                        listViewBtn.classList.remove('active');
-                    }
-                };
-
-                gridViewBtn.addEventListener('click', () => {
-                    applyView('grid');
-                    localStorage.setItem('productView', 'grid');
-                });
-
-                listViewBtn.addEventListener('click', () => {
-                    applyView('list');
-                    localStorage.setItem('productView', 'list');
-                });
-
-                // Initialize view on load
-                applyView(localStorage.getItem('productView') || 'grid');
-            }
+        const bindStoreEventListeners = () => {
+            document.getElementById('product-search-input')?.addEventListener('input', renderProducts);
+            document.getElementById('category-filter')?.addEventListener('change', renderProducts);
+            document.getElementById('cart-button')?.addEventListener('click', () => Utils.openModal('cart-modal'));
+            document.getElementById('close-cart-btn')?.addEventListener('click', () => Utils.closeModal('cart-modal'));
+            document.getElementById('close-product-detail-btn')?.addEventListener('click', () => Utils.closeModal('product-detail-modal'));
+            document.getElementById('checkout-btn')?.addEventListener('click', openCheckoutModal);
+            document.getElementById('close-checkout-btn')?.addEventListener('click', () => Utils.closeModal('checkout-modal'));
+            document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
+            document.getElementById('grid-view-btn')?.addEventListener('click', () => toggleView('grid'));
+            document.getElementById('list-view-btn')?.addEventListener('click', () => toggleView('list'));
+            document.getElementById('modal-backdrop')?.addEventListener('click', () => {
+                Utils.closeModal('cart-modal');
+                Utils.closeModal('product-detail-modal');
+                Utils.closeModal('checkout-modal');
+            });
         };
 
         bindStoreSubscriptions();
+        bindStoreEventListeners();
         updateCart();
-        bindStoreEvents();
+        toggleView('grid'); // Initialize with grid view
     }
 })();
