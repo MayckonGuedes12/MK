@@ -1,89 +1,533 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Welcome to Firebase Hosting</title>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo - MK World Imports</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body id="admin-body">
 
-    <!-- update the version number as needed -->
-    <script defer src="/__/firebase/11.9.1/firebase-app-compat.js"></script>
-    <!-- include only the Firebase features as you need -->
-    <script defer src="/__/firebase/11.9.1/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-database-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-functions-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-messaging-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-storage-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-analytics-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-remote-config-compat.js"></script>
-    <script defer src="/__/firebase/11.9.1/firebase-performance-compat.js"></script>
-    <!-- 
-      initialize the SDK after all desired features are loaded, set useEmulator to false
-      to avoid connecting the SDK to running emulators.
-    -->
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-
-    <style media="screen">
-      body { background: #ECEFF1; color: rgba(0,0,0,0.87); font-family: Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-      #message { background: white; max-width: 360px; margin: 100px auto 16px; padding: 32px 24px; border-radius: 3px; }
-      #message h2 { color: #ffa100; font-weight: bold; font-size: 16px; margin: 0 0 8px; }
-      #message h1 { font-size: 22px; font-weight: 300; color: rgba(0,0,0,0.6); margin: 0 0 16px;}
-      #message p { line-height: 140%; margin: 16px 0 24px; font-size: 14px; }
-      #message a { display: block; text-align: center; background: #039be5; text-transform: uppercase; text-decoration: none; color: white; padding: 16px; border-radius: 4px; }
-      #message, #message a { box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); }
-      #load { color: rgba(0,0,0,0.4); text-align: center; font-size: 13px; }
-      @media (max-width: 600px) {
-        body, #message { margin-top: 0; background: white; box-shadow: none; }
-        body { border-top: 16px solid #ffa100; }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="message">
-      <h2>Welcome</h2>
-      <h1>Firebase Hosting Setup Complete</h1>
-      <p>You're seeing this because you've successfully setup Firebase Hosting. Now it's time to go build something extraordinary!</p>
-      <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
+    <div id="login-screen">
+        <div class="login-box">
+            <img src="/logoloja.png" alt="Logo MK World Imports" class="login-logo" id="login-logo-img">
+            <h2>Acesso Restrito</h2>
+            <form id="login-form">
+                <div class="input-group">
+                    <input type="text" id="username" placeholder="Usuário" required value="admin">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="password" placeholder="Senha" required value="admin">
+                </div>
+                <button type="submit">Entrar</button>
+                <p id="login-error" class="error-message"></p>
+            </form>
+        </div>
     </div>
-    <p id="load">Firebase SDK Loading&hellip;</p>
 
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        const loadEl = document.querySelector('#load');
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-        // // The Firebase SDK is initialized and available here!
-        //
-        // firebase.auth().onAuthStateChanged(user => { });
-        // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
-        // firebase.firestore().doc('/foo/bar').get().then(() => { });
-        // firebase.functions().httpsCallable('yourFunction')().then(() => { });
-        // firebase.messaging().requestPermission().then(() => { });
-        // firebase.storage().ref('/path/to/ref').getDownloadURL().then(() => { });
-        // firebase.analytics(); // call to activate
-        // firebase.analytics().logEvent('tutorial_completed');
-        // firebase.performance(); // call to activate
-        //
-        // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+    <div id="admin-panel" class="hidden">
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <img src="/logoloja.png" alt="Logo" id="sidebar-logo">
+                <h3 id="sidebar-store-name">MK World Imports</h3>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="#" class="nav-link active" data-target="dashboard-section"><i class='bx bxs-dashboard'></i> <span>Dashboard</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="products-section"><i class='bx bxs-package'></i> <span>Produtos</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="customers-section"><i class='bx bxs-user-detail'></i> <span>Clientes</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="orders-section"><i class='bx bxs-receipt'></i> <span>Pedidos Online</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="pos-section"><i class='bx bxs-cart-alt'></i> <span>Ponto de Venda</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="cash-control-section"><i class='bx bxs-wallet'></i> <span>Controle de Caixa</span></a></li>
+                    <li><a href="#" class="nav-link" data-target="designer-section"><i class='bx bxs-paint'></i> <span>Designer Visual</span></a></li>
+                    <li><a href="loja.html" target="_blank" class="nav-link"><i class='bx bx-store-alt'></i> <span>Ver Loja</span></a></li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn"><i class='bx bx-log-out'></i> <span>Sair</span></a>
+                <button id="sidebar-toggle-btn" title="Recolher menu"><i class='bx bx-chevron-left'></i></button>
+            </div>
+        </aside>
 
-        try {
-          let app = firebase.app();
-          let features = [
-            'auth', 
-            'database', 
-            'firestore',
-            'functions',
-            'messaging', 
-            'storage', 
-            'analytics', 
-            'remoteConfig',
-            'performance',
-          ].filter(feature => typeof app[feature] === 'function');
-          loadEl.textContent = `Firebase SDK loaded with ${features.join(', ')}`;
-        } catch (e) {
-          console.error(e);
-          loadEl.textContent = 'Error loading the Firebase SDK, check the console.';
-        }
-      });
+        <main id="main-content">
+            <!-- Dashboard -->
+            <section id="dashboard-section" class="content-section active">
+                <div class="page-header">
+                    <h2>Dashboard</h2>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon green">
+                            <i class='bx bxs-dollar-circle'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Vendas do Mês</h4>
+                            <p id="dashboard-sales">R$ 0,00</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                             <i class='bx bxs-user-detail'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Clientes Ativos</h4>
+                            <p id="dashboard-customers">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                         <div class="stat-icon orange">
+                            <i class='bx bxs-package'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Produtos em Estoque</h4>
+                            <p id="dashboard-products">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red">
+                            <i class='bx bxs-receipt'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Pedidos Pendentes</h4>
+                            <p id="dashboard-orders">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                         <div class="stat-icon purple">
+                            <i class='bx bxs-bank'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Total Investido (Estoque)</h4>
+                            <p id="dashboard-investment">R$ 0,00</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon yellow">
+                            <i class='bx bxs-trending-up'></i>
+                        </div>
+                        <div class="stat-info">
+                            <h4>Potencial de Faturamento</h4>
+                            <p id="dashboard-revenue-potential">R$ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h3>Vendas por Dia</h3>
+                        <canvas id="salesChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Vendas por Categoria</h3>
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+                <div class="recent-sales-container">
+                    <h3>Vendas Recentes</h3>
+                    <div class="table-wrapper">
+                        <table id="recent-sales-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Data</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Gerenciar Produtos -->
+            <section id="products-section" class="content-section hidden">
+                <div class="page-header">
+                    <h2>Gerenciar Produtos</h2>
+                    <button id="add-product-btn"><i class='bx bx-plus'></i> Adicionar Produto</button>
+                </div>
+                <input type="text" id="product-search" class="search-bar" placeholder="Buscar produto por nome...">
+                <div class="table-wrapper">
+                    <table id="products-table">
+                        <thead>
+                            <tr>
+                                <th>Imagem</th>
+                                <th>Nome</th>
+                                <th>Preço Venda</th>
+                                <th>Custo</th>
+                                <th>Estoque</th>
+                                <th>Categoria</th>
+                                <th>Cadastrado em</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Gerenciar Clientes -->
+            <section id="customers-section" class="content-section hidden">
+                <div class="page-header">
+                    <h2>Gerenciar Clientes</h2>
+                    <button id="add-customer-btn"><i class='bx bx-plus'></i> Adicionar Cliente</button>
+                </div>
+                <input type="text" id="customer-search" class="search-bar" placeholder="Buscar cliente por nome ou CPF...">
+                <div class="table-wrapper">
+                    <table id="customers-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>CPF</th>
+                                <th>Email</th>
+                                <th>Telefone</th>
+                                <th>Total Gasto</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Pedidos Online -->
+            <section id="orders-section" class="content-section hidden">
+                 <div class="page-header">
+                    <h2>Pedidos Online</h2>
+                </div>
+                <div class="filter-controls">
+                    <button class="filter-btn active" data-status="all">Todos</button>
+                    <button class="filter-btn" data-status="pending">Pendentes</button>
+                    <button class="filter-btn" data-status="completed">Concluídos</button>
+                </div>
+                <div class="table-wrapper" id="orders-list"></div>
+            </section>
+
+            <!-- Ponto de Venda (PDV) -->
+            <section id="pos-section" class="content-section hidden">
+                <div id="pos-cash-closed-overlay" class="hidden">
+                    <div>
+                        <i class='bx bxs-error-circle'></i>
+                        <h2>Caixa Fechado</h2>
+                        <p>Por favor, abra o caixa na seção 'Controle de Caixa' para iniciar as vendas.</p>
+                    </div>
+                </div>
+                <h2>Ponto de Venda (PDV)</h2>
+                <div class="pos-container">
+                    <div class="pos-products">
+                        <input type="text" id="pos-product-search" class="search-bar" placeholder="Buscar produto...">
+                        <div id="pos-product-list" class="pos-product-grid"></div>
+                    </div>
+                    <div class="pos-cart">
+                        <h3>Carrinho</h3>
+                        <div class="pos-customer-select">
+                             <label for="pos-customer-select-input">Cliente:</label>
+                             <select id="pos-customer-select-input">
+                                <option value="consumidor-final">Consumidor Final</option>
+                             </select>
+                        </div>
+                        <ul id="pos-cart-items"></ul>
+                        <div class="pos-total">
+                            <h4>Total: <span id="pos-total-amount">R$ 0,00</span></h4>
+                        </div>
+                         <div class="pos-payment">
+                            <label for="pos-payment-method">Pagamento:</label>
+                            <select id="pos-payment-method">
+                                <option>Dinheiro</option>
+                                <option>Cartão de Crédito</option>
+                                <option>Cartão de Débito</option>
+                                <option>PIX</option>
+                                <option>Boleto</option>
+                                <option>Bitcoin (BTC)</option>
+                            </select>
+                        </div>
+                        <button id="pos-finalize-btn">Registrar Venda</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Controle de Caixa -->
+            <section id="cash-control-section" class="content-section hidden">
+                 <div class="page-header">
+                    <h2>Controle de Caixa</h2>
+                    <div id="cash-state-indicator">Caixa Fechado</div>
+                </div>
+                <div id="cash-closed-view">
+                    <form id="open-cash-form">
+                        <input type="number" id="initial-balance" placeholder="Saldo Inicial (R$)" min="0" step="0.01" required>
+                        <button type="submit">Abrir Caixa</button>
+                    </form>
+                </div>
+                <div id="cash-open-view" class="hidden">
+                    <div class="cash-actions">
+                        <button id="register-entry-btn">Registrar Entrada</button>
+                        <button id="register-exit-btn">Registrar Saída</button>
+                        <button id="close-cash-btn">Fechar Caixa</button>
+                    </div>
+                    <h4>Saldo Atual: <span id="current-balance">R$ 0,00</span></h4>
+                    <h3>Histórico de Movimentações</h3>
+                    <div class="table-wrapper">
+                        <table id="cash-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th>Tipo</th>
+                                    <th>Valor</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Designer Visual -->
+            <section id="designer-section" class="content-section hidden">
+                <div class="page-header">
+                    <h2>Designer Visual</h2>
+                </div>
+                <div class="preview-controls">
+                    <button class="preview-toggle-btn active" data-view="desktop"><i class='bx bx-desktop'></i> Desktop</button>
+                    <button class="preview-toggle-btn" data-view="mobile"><i class='bx bx-mobile-alt'></i> Celular</button>
+                </div>
+                <div id="store-preview-wrapper" class="view-desktop">
+                    <iframe id="store-preview-iframe" src="loja.html" title="Pré-visualização da Loja"></iframe>
+                </div>
+                <form id="designer-form" class="designer-form">
+                    <details class="designer-accordion" open>
+                        <summary><h3>Tema e Aparência Geral</h3></summary>
+                        <div class="form-row">
+                             <div class="form-group">
+                                <label for="setting-theme">Tema (Claro / Escuro)</label>
+                                <select id="setting-theme" data-setting="theme">
+                                    <option value="dark">Escuro</option>
+                                    <option value="light">Claro</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-font">Fonte Principal</label>
+                                <select id="setting-font" data-setting="fontFamily">
+                                    <option value="Poppins">Poppins</option>
+                                    <option value="Roboto">Roboto</option>
+                                    <option value="Lato">Lato</option>
+                                    <option value="Montserrat">Montserrat</option>
+                                    <option value="Open Sans">Open Sans</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <details class="designer-accordion">
+                        <summary><h3>Loja Online: Informações e Mídias</h3></summary>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="store-name">Nome da Loja</label>
+                                <input type="text" id="store-name" data-setting="storeName">
+                            </div>
+                            <div class="form-group">
+                                <label for="store-slogan">Slogan da Loja</label>
+                                <input type="text" id="store-slogan" data-setting="storeSlogan">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                             <div class="form-group">
+                                <label>Logo da Loja</label>
+                                <div class="image-upload-container">
+                                    <img id="logo-preview" class="designer-preview-img" src="/placeholder.png" alt="Pré-visualização do Logo">
+                                    <input type="file" id="store-logo-file" data-setting="logoUrl" data-preview-target="logo-preview" accept="image/*">
+                                    <label for="store-logo-file" class="file-upload-label"><i class='bx bx-upload'></i> Trocar Logo</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Imagem de Fundo (Banner)</label>
+                                 <div class="image-upload-container">
+                                    <img id="bg-preview" class="designer-preview-img" src="/placeholder.png" alt="Pré-visualização do Banner">
+                                    <input type="file" id="store-bg-file" data-setting="backgroundUrl" data-preview-target="bg-preview" accept="image/*">
+                                    <label for="store-bg-file" class="file-upload-label"><i class='bx bx-upload'></i> Trocar Imagem</label>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <details class="designer-accordion">
+                         <summary><h3>Loja Online: Cores</h3></summary>
+                        <div class="form-row">
+                            <div class="form-group color-picker">
+                                <label for="store-color-primary">Cor Primária (Botões, links)</label>
+                                <input type="color" id="store-color-primary" data-setting="storeColorPrimary">
+                            </div>
+                            <div class="form-group color-picker">
+                                <label for="store-color-background">Cor de Fundo</label>
+                                <input type="color" id="store-color-background" data-setting="storeColorBackground">
+                            </div>
+                            <div class="form-group color-picker">
+                                <label for="store-color-text">Cor do Texto</label>
+                                <input type="color" id="store-color-text" data-setting="storeColorText">
+                            </div>
+                             <div class="form-group color-picker">
+                                <label for="store-color-card">Cor dos Cards</label>
+                                <input type="color" id="store-color-card" data-setting="storeColorCard">
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <details class="designer-accordion">
+                        <summary><h3>Loja Online: Contato e Redes Sociais</h3></summary>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="store-phone">Nº de WhatsApp (com cód. país)</label>
+                                <input type="tel" id="store-phone" data-setting="whatsappNumber" placeholder="ex: 55119...">
+                            </div>
+                             <div class="form-group">
+                                <label for="store-instagram">Instagram (apenas o usuário)</label>
+                                <input type="text" id="store-instagram" data-setting="instagramUser" placeholder="ex: mkworldimports">
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="designer-accordion">
+                        <summary><h3>Painel Administrativo: Mídias</h3></summary>
+                         <div class="form-row">
+                            <div class="form-group">
+                                <label>Logo do Painel</label>
+                                <div class="image-upload-container">
+                                    <img id="admin-logo-preview" class="designer-preview-img" src="/logoloja.png" alt="Pré-visualização do Logo do Admin">
+                                    <input type="file" id="admin-logo-file" data-setting="adminLogoUrl" data-preview-target="admin-logo-preview" accept="image/*">
+                                    <label for="admin-logo-file" class="file-upload-label"><i class='bx bx-upload'></i> Trocar Logo</label>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <details class="designer-accordion">
+                        <summary><h3>Painel Administrativo: Cores</h3></summary>
+                         <div class="form-row">
+                            <div class="form-group color-picker">
+                                <label for="admin-color-primary">Cor Primária</label>
+                                <input type="color" id="admin-color-primary" data-setting="adminColorPrimary">
+                            </div>
+                            <div class="form-group color-picker">
+                                <label for="admin-color-background">Cor de Fundo</label>
+                                <input type="color" id="admin-color-background" data-setting="adminColorBackground">
+                            </div>
+                             <div class="form-group color-picker">
+                                <label for="admin-color-surface">Cor de Superfície (Cards)</label>
+                                <input type="color" id="admin-color-surface" data-setting="adminColorSurface">
+                            </div>
+                             <div class="form-group color-picker">
+                                <label for="admin-color-text">Cor do Texto</label>
+                                <input type="color" id="admin-color-text" data-setting="adminColorText">
+                            </div>
+                        </div>
+                    </details>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-backdrop" class="hidden"></div>
+    
+    <!-- Product Modal -->
+    <div id="product-modal" class="modal hidden">
+        <form id="product-form">
+            <h3 id="product-modal-title">Adicionar Produto</h3>
+            <input type="hidden" id="product-id">
+            <input type="text" id="product-name" placeholder="Nome do Produto" required>
+            <textarea id="product-desc" placeholder="Descrição"></textarea>
+            <div class="form-row">
+                <input type="number" id="product-investment-price" placeholder="Custo/Unid. (R$)" min="0" step="0.01">
+                <input type="number" id="product-price" placeholder="Preço Venda (R$)" min="0" step="0.01" required>
+                <input type="number" id="product-stock" placeholder="Estoque" min="0" required>
+            </div>
+            <input type="text" id="product-category" placeholder="Categoria" required>
+            
+            <div class="form-group">
+                <label for="product-images">Imagens (a primeira será a capa)</label>
+                <input type="file" id="product-images" multiple accept="image/*">
+                <div id="product-image-previews" class="image-previews"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="product-video">URL do Vídeo (YouTube, opcional)</label>
+                <input type="url" id="product-video" placeholder="Cole o link do YouTube aqui">
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="cancel-product-btn">Cancelar</button>
+                <button type="submit">Salvar</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Customer Modal -->
+    <div id="customer-modal" class="modal hidden">
+        <form id="customer-form">
+            <h3 id="customer-modal-title">Adicionar Cliente</h3>
+            <input type="hidden" id="customer-id">
+            <input type="text" id="customer-name" placeholder="Nome Completo" required>
+            <input type="text" id="customer-cpf" placeholder="CPF">
+            <input type="email" id="customer-email" placeholder="E-mail">
+            <input type="tel" id="customer-phone" placeholder="Telefone" required>
+            <textarea id="customer-address" placeholder="Endereço Completo"></textarea>
+            <div class="modal-actions">
+                <button type="button" id="cancel-customer-btn">Cancelar</button>
+                <button type="submit">Salvar</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Cash Entry/Exit Modal -->
+    <div id="cash-entry-modal" class="modal hidden">
+        <form id="cash-entry-form">
+            <h3 id="cash-entry-title"></h3>
+            <input type="hidden" id="cash-entry-id">
+            <input type="hidden" id="cash-entry-type">
+            <input type="number" id="cash-entry-amount" placeholder="Valor (R$)" min="0.01" step="0.01" required>
+            <input type="text" id="cash-entry-desc" placeholder="Descrição" required>
+            <div class="modal-actions">
+                <button type="button" class="cancel-cash-entry-btn">Cancelar</button>
+                <button type="submit">Salvar</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Cash Closing Summary Modal -->
+    <div id="close-cash-summary-modal" class="modal hidden">
+        <form id="close-cash-summary-form">
+            <h3 id="close-cash-summary-title">Resumo do Fechamento de Caixa</h3>
+            <div id="cash-summary-content">
+                <p><strong>Saldo Inicial:</strong> <span id="summary-initial">R$ 0,00</span></p>
+                <p><strong>Total de Vendas (PDV):</strong> <span id="summary-sales">R$ 0,00</span></p>
+                <p><strong>Outras Entradas:</strong> <span id="summary-entries">R$ 0,00</span></p>
+                <p class="summary-total"><strong>TOTAL DE ENTRADAS:</strong> <span id="summary-total-entries">R$ 0,00</span></p>
+                <hr>
+                <p><strong>Total de Saídas:</strong> <span id="summary-exits" class="text-error">R$ 0,00</span></p>
+                <hr>
+                <p class="summary-final"><strong>Saldo Final Esperado:</strong> <span id="summary-final-balance">R$ 0,00</span></p>
+            </div>
+            <p style="margin-top: 1rem; color: var(--color-text-muted);">Confirmar o fechamento do caixa? Esta ação não pode ser desfeita.</p>
+            <div class="modal-actions">
+                <button type="button" id="cancel-close-cash-summary-btn">Cancelar</button>
+                <button type="submit" id="confirm-close-cash-btn">Confirmar Fechamento</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "chart.js": "https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.esm.js"
+      }
+    }
     </script>
-  </body>
+    <script type="module" src="script.js"></script>
+</body>
 </html>
