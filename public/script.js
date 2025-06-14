@@ -10,7 +10,7 @@
             initStore(storeBody);
         }
     });
-
+    
     // Utility Functions
     const Utils = {
         showToast: (message, type = 'success') => {
